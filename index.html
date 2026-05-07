@@ -183,6 +183,29 @@
 
   .config-warn { background: #2a1a00; border: 1px solid var(--gul); color: var(--gul); padding: 14px; border-radius: 12px; font-size: 13px; line-height: 1.5; margin-bottom: 16px; }
   .config-warn strong { color: white; display: block; margin-bottom: 4px; font-size: 14px; }
+
+  .section-row { display: flex; align-items: center; justify-content: space-between; margin: 18px 0 10px; }
+  .section-row h2 { margin: 0; font-size: 22px; color: var(--muted); }
+  .icon-btn { background: var(--card); border: 1px solid #333; color: var(--tekst); width: 36px; height: 36px; border-radius: 8px; font-size: 16px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+
+  .modal-wide { max-width: 480px; max-height: 85vh; display: flex; flex-direction: column; }
+  .modal-wide .scroll-body { overflow-y: auto; flex: 1; margin: 8px -10px 0; padding: 0 10px; }
+  .modal-wide .footer-row { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #222; }
+
+  .admin-rule { background: var(--card2); border-radius: 10px; padding: 8px 10px; margin-bottom: 6px; display: flex; align-items: center; gap: 10px; }
+  .admin-rule .em { font-size: 22px; min-width: 30px; text-align: center; }
+  .admin-rule .info { flex: 1; min-width: 0; }
+  .admin-rule .info .nm { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .admin-rule .info .pts { color: var(--rod); font-size: 12px; font-weight: 700; margin-top: 2px; }
+  .admin-rule.neg .info .pts { color: var(--gul); }
+  .admin-rule .acts { display: flex; gap: 4px; }
+  .admin-rule .acts button { width: 30px; height: 30px; border-radius: 6px; background: var(--card); border: 1px solid #333; color: var(--tekst); font-size: 14px; cursor: pointer; padding: 0; line-height: 1; }
+  .admin-rule .acts button:disabled { opacity: 0.3; }
+  .admin-rule .acts button.del { color: #f87171; border-color: #5a1f1f; }
+
+  .field { margin-bottom: 12px; }
+  .field label { display: block; color: var(--muted); font-size: 11px; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; }
+  .field input { width: 100%; background: var(--card2); color: var(--tekst); border: 1px solid #333; border-radius: 8px; padding: 11px; font-size: 16px; }
 </style>
 </head>
 <body>
@@ -206,7 +229,10 @@
     <div id="elimTag"></div>
   </div>
 
-  <h2 class="section-title">Regler</h2>
+  <div class="section-row">
+    <h2>Regler</h2>
+    <button class="icon-btn" id="editRulesBtn" title="Endre regler">✏️</button>
+  </div>
   <div id="rulesList"></div>
 
   <button class="elim-btn" id="elimBtn">Catche klamma / aids / skabb / herpes</button>
@@ -232,11 +258,49 @@
   </div>
 </div>
 
+<div class="modal-bg" id="adminModalBg">
+  <div class="modal modal-wide">
+    <h3>Endre regler</h3>
+    <p>Endringer synker live til alle.</p>
+    <div class="scroll-body" id="adminRulesBody"></div>
+    <div class="footer-row">
+      <button class="btn btn-ghost" id="adminClose" style="flex:1">Lukk</button>
+      <button class="btn" id="adminAdd" style="flex:1">+ Ny regel</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="editRuleBg">
+  <div class="modal">
+    <h3 id="editRuleTitle">Endre regel</h3>
+    <div class="field">
+      <label>Emoji</label>
+      <input id="erEmoji" maxlength="10" placeholder="🍦" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Navn</label>
+      <input id="erName" maxlength="60" placeholder="Hva er handlingen?" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Poeng (kan være desimal eller negativ)</label>
+      <input id="erPts" type="text" inputmode="decimal" placeholder="5" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Notat (valgfritt)</label>
+      <input id="erNote" maxlength="120" placeholder="F.eks: må være i bunad" autocomplete="off">
+    </div>
+    <div class="row">
+      <button class="btn btn-ghost" id="erCancel" style="flex:1">Avbryt</button>
+      <button class="btn" id="erSave" style="flex:1">Lagre</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
-  import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
+  import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, deleteDoc } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 
   // ============ FIREBASE CONFIG ============
   // BYTT UT MED DIN EGEN CONFIG. Se README.md for oppskrift.
@@ -250,7 +314,7 @@
   };
   // ==========================================
 
-  const RULES = [
+  const DEFAULT_RULES = [
     { id: 'is',          emoji: '🍦',   name: 'Is',                                            pts: 0.5 },
     { id: 'shellpolse',  emoji: '🌭',   name: 'Shell pølse',                                   pts: 0.5 },
     { id: 'fapa',        emoji: '👅',   name: 'Få på',                                         pts: 5,   note: 'Hvis på dagen: må være i bunad' },
@@ -264,16 +328,20 @@
     { id: 'naelle',      emoji: '🍆🍑', name: 'Nælle i finstasen',                             pts: 30 },
     { id: 'eldre10',     emoji: '👩',   name: 'Få på med dame +10 år',                         pts: 10 },
     { id: 'eldre20',     emoji: '👵',   name: 'Få på med dame +20 år',                         pts: 20 },
-    { id: 'spy',         emoji: '🤮',   name: 'Spy',                                           pts: -3, neg: true },
-    { id: 'spymobler',   emoji: '🛋️',   name: 'Spy på møbler eller lignende',                  pts: -5, neg: true },
+    { id: 'spy',         emoji: '🤮',   name: 'Spy',                                           pts: -3 },
+    { id: 'spymobler',   emoji: '🛋️',   name: 'Spy på møbler eller lignende',                  pts: -5 },
   ];
 
+  const RULES_DOC_ID = '__rules__';
   const configured = firebaseConfig.apiKey && !firebaseConfig.apiKey.includes('PASTE');
   if (!configured) document.getElementById('configWarn').style.display = 'block';
 
   let players = {};
+  let rules = DEFAULT_RULES.slice();
   let myId = localStorage.getItem('myId') || null;
   let db = null, playersCol = null;
+  let didSeed = false;
+  let editingIdx = -1;
 
   if (configured) {
     const app = initializeApp(firebaseConfig);
@@ -281,12 +349,35 @@
     playersCol = collection(db, 'poengliste-2026');
     onSnapshot(playersCol, (snap) => {
       players = {};
-      snap.forEach(d => { players[d.id] = { id: d.id, ...d.data() }; });
+      let foundRules = false;
+      snap.forEach(d => {
+        if (d.id === RULES_DOC_ID) {
+          foundRules = true;
+          const data = d.data();
+          if (Array.isArray(data.rules)) rules = data.rules.map(r => ({ ...r, neg: r.pts < 0 }));
+        } else {
+          players[d.id] = { id: d.id, ...d.data() };
+        }
+      });
+      if (!foundRules && !didSeed) {
+        didSeed = true;
+        saveRules(DEFAULT_RULES);
+      }
       render();
     }, (err) => {
       console.error(err);
       toast('Klarer ikke koble til Firebase. Sjekk config og regler.');
     });
+  }
+
+  async function saveRules(newRules) {
+    if (!db) return;
+    const clean = newRules.map(r => {
+      const o = { id: r.id, emoji: r.emoji || '•', name: r.name, pts: Number(r.pts) || 0 };
+      if (r.note) o.note = r.note;
+      return o;
+    });
+    await setDoc(doc(playersCol, RULES_DOC_ID), { rules: clean, updatedAt: serverTimestamp() });
   }
 
   function $(id) { return document.getElementById(id); }
@@ -297,7 +388,7 @@
   function calcTotal(p) {
     if (!p || !p.scores) return 0;
     let total = 0;
-    for (const r of RULES) total += (p.scores[r.id] || 0) * r.pts;
+    for (const r of rules) total += (p.scores[r.id] || 0) * r.pts;
     return total;
   }
   function fmt(n) {
@@ -328,7 +419,7 @@
     }
 
     const rl = $('rulesList');
-    rl.innerHTML = RULES.map(r => {
+    rl.innerHTML = rules.map(r => {
       const c = me ? (me.scores?.[r.id] || 0) : 0;
       const sign = r.pts < 0 ? '' : '+';
       return `<div class="rule ${r.neg?'negative':''}">
@@ -385,6 +476,8 @@
         </div>`;
       }).join('');
     }
+
+    if ($('adminModalBg').classList.contains('show')) renderAdmin();
   }
 
   async function bumpRule(playerId, ruleId, delta) {
@@ -459,6 +552,110 @@
   });
   $('nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('modalOk').click(); });
   $('resetBtn').addEventListener('click', resetMine);
+
+  // ====== Admin: edit rules list ======
+  function renderAdmin() {
+    const body = $('adminRulesBody');
+    if (rules.length === 0) {
+      body.innerHTML = '<div style="text-align:center;color:#888;padding:14px;">Ingen regler. Trykk "+ Ny regel".</div>';
+      return;
+    }
+    body.innerHTML = rules.map((r, i) => {
+      const sign = r.pts < 0 ? '' : '+';
+      return `<div class="admin-rule ${r.pts<0?'neg':''}">
+        <div class="em">${r.emoji || '•'}</div>
+        <div class="info">
+          <div class="nm">${escapeHtml(r.name)}</div>
+          <div class="pts">${sign}${fmt(r.pts)} p${r.note?' · '+escapeHtml(r.note):''}</div>
+        </div>
+        <div class="acts">
+          <button data-act="up" data-i="${i}" ${i===0?'disabled':''}>↑</button>
+          <button data-act="down" data-i="${i}" ${i===rules.length-1?'disabled':''}>↓</button>
+          <button data-act="edit" data-i="${i}">✏️</button>
+          <button class="del" data-act="del" data-i="${i}">✕</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function openAdmin() {
+    if (!db) { toast('Firebase ikke koblet til'); return; }
+    renderAdmin();
+    $('adminModalBg').classList.add('show');
+  }
+
+  function closeAdmin() { $('adminModalBg').classList.remove('show'); }
+
+  function openEditRule(idx) {
+    editingIdx = idx;
+    const r = idx >= 0 ? rules[idx] : { emoji: '', name: '', pts: '', note: '' };
+    $('editRuleTitle').textContent = idx >= 0 ? 'Endre regel' : 'Ny regel';
+    $('erEmoji').value = r.emoji || '';
+    $('erName').value = r.name || '';
+    $('erPts').value = r.pts === '' ? '' : String(r.pts).replace('.', ',');
+    $('erNote').value = r.note || '';
+    $('editRuleBg').classList.add('show');
+    setTimeout(() => $('erName').focus(), 50);
+  }
+
+  function closeEditRule() { $('editRuleBg').classList.remove('show'); editingIdx = -1; }
+
+  async function saveEditRule() {
+    const name = $('erName').value.trim();
+    const ptsRaw = $('erPts').value.trim().replace(',', '.');
+    const pts = Number(ptsRaw);
+    if (!name) { toast('Skriv navn'); return; }
+    if (!ptsRaw || Number.isNaN(pts)) { toast('Ugyldig poengverdi'); return; }
+    const emoji = $('erEmoji').value.trim() || '•';
+    const note = $('erNote').value.trim();
+    const next = rules.slice();
+    if (editingIdx >= 0) {
+      next[editingIdx] = { ...next[editingIdx], emoji, name, pts, note: note || undefined };
+    } else {
+      const slug = name.toLowerCase().replace(/[^a-z0-9æøå]+/g, '-').replace(/^-|-$/g, '').replace(/æ/g,'ae').replace(/ø/g,'o').replace(/å/g,'a');
+      const id = (slug || 'regel') + '-' + Math.random().toString(36).slice(2,6);
+      next.push({ id, emoji, name, pts, note: note || undefined });
+    }
+    await saveRules(next);
+    closeEditRule();
+    renderAdmin();
+    toast('Lagret');
+  }
+
+  async function deleteRule(idx) {
+    const r = rules[idx];
+    if (!confirm(`Slette "${r.name}"?`)) return;
+    const next = rules.slice();
+    next.splice(idx, 1);
+    await saveRules(next);
+    renderAdmin();
+    toast('Slettet');
+  }
+
+  async function moveRule(idx, dir) {
+    const j = idx + dir;
+    if (j < 0 || j >= rules.length) return;
+    const next = rules.slice();
+    [next[idx], next[j]] = [next[j], next[idx]];
+    await saveRules(next);
+    renderAdmin();
+  }
+
+  $('editRulesBtn').addEventListener('click', openAdmin);
+  $('adminClose').addEventListener('click', closeAdmin);
+  $('adminAdd').addEventListener('click', () => openEditRule(-1));
+  $('adminRulesBody').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-act]');
+    if (!btn) return;
+    const i = parseInt(btn.dataset.i, 10);
+    const act = btn.dataset.act;
+    if (act === 'up') moveRule(i, -1);
+    else if (act === 'down') moveRule(i, 1);
+    else if (act === 'edit') openEditRule(i);
+    else if (act === 'del') deleteRule(i);
+  });
+  $('erCancel').addEventListener('click', closeEditRule);
+  $('erSave').addEventListener('click', saveEditRule);
 
   render();
 </script>
