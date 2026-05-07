@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="17. mai">
+<meta name="theme-color" content="#BA0C2F">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<title>Poengliste 17. mai</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --rod: #BA0C2F;
+    --bla: #00205B;
+    --bg: #0a0a0a;
+    --card: #161616;
+    --card2: #1f1f1f;
+    --tekst: #f5f5f5;
+    --muted: #888;
+    --gul: #f59e0b;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--tekst);
+    min-height: 100vh;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+    overscroll-behavior-y: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  input { -webkit-user-select: text; user-select: text; }
+  .wrap { max-width: 600px; margin: 0 auto; padding: 16px; }
+  h1, h2, h3 { font-family: 'Bebas Neue', sans-serif; font-weight: 400; letter-spacing: 1px; margin: 0; text-transform: uppercase; }
+  h1 { font-size: 44px; line-height: 1; }
+  h1 .accent { color: var(--rod); }
+  .sub { color: var(--muted); font-size: 13px; margin: 4px 0 16px; }
+
+  .player-bar { display: flex; gap: 8px; margin-bottom: 16px; align-items: stretch; }
+  select, input, button { font-family: inherit; font-size: 16px; }
+  select, .name-input {
+    flex: 1;
+    background: var(--card);
+    color: var(--tekst);
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 12px 14px;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23888' d='M4 6l4 4 4-4z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 16px;
+    padding-right: 36px;
+  }
+  .name-input { background-image: none; padding-right: 14px; }
+  .btn {
+    background: var(--rod);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    padding: 12px 16px;
+    font-weight: 800;
+    cursor: pointer;
+    font-size: 18px;
+  }
+  .btn-ghost {
+    background: var(--card);
+    color: var(--tekst);
+    border: 1px solid #333;
+  }
+
+  .total-card {
+    background: linear-gradient(135deg, var(--rod), #7a0820);
+    border-radius: 20px;
+    padding: 18px 20px 22px;
+    margin-bottom: 20px;
+    text-align: center;
+  }
+  .total-card.eliminated { background: linear-gradient(135deg, #444, #222); }
+  .total-label { font-family: 'Bebas Neue'; font-size: 18px; opacity: 0.85; letter-spacing: 2px; }
+  .total-value { font-family: 'Bebas Neue'; font-size: 88px; line-height: 1; }
+  .eliminated-tag {
+    display: inline-block;
+    background: #000;
+    color: var(--rod);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-family: 'Bebas Neue';
+    font-size: 16px;
+    letter-spacing: 2px;
+    margin-top: 6px;
+  }
+
+  .section-title { font-size: 22px; margin: 18px 0 10px; color: var(--muted); }
+
+  .rule {
+    background: var(--card);
+    border-radius: 16px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .rule.negative { border-left: 4px solid var(--gul); }
+  .rule .emoji { font-size: 26px; line-height: 1; min-width: 38px; text-align: center; }
+  .rule .body { flex: 1; min-width: 0; }
+  .rule .name { font-weight: 700; font-size: 15px; line-height: 1.25; }
+  .rule .note { color: var(--muted); font-size: 12px; margin-top: 2px; line-height: 1.3; }
+  .rule .pts { color: var(--rod); font-weight: 800; font-size: 13px; margin-top: 2px; }
+  .rule.negative .pts { color: var(--gul); }
+  .ctrl { display: flex; align-items: center; gap: 4px; }
+  .ctrl button {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: var(--card2);
+    color: var(--tekst);
+    border: 1px solid #333;
+    font-size: 22px;
+    font-weight: 800;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+  }
+  .ctrl button:disabled { opacity: 0.3; }
+  .ctrl button.plus { background: var(--rod); color: white; border-color: var(--rod); }
+  .ctrl button.plus:disabled { background: var(--card2); color: var(--tekst); border-color: #333; }
+  .ctrl .count { min-width: 28px; text-align: center; font-weight: 800; font-size: 22px; font-family: 'Bebas Neue'; }
+
+  .elim-btn {
+    width: 100%;
+    background: var(--card);
+    color: var(--gul);
+    border: 2px solid var(--gul);
+    border-radius: 14px;
+    padding: 14px;
+    font-family: 'Bebas Neue';
+    font-size: 20px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    margin-top: 10px;
+  }
+  .elim-btn.is-elim { background: var(--rod); border-color: var(--rod); color: #fff; }
+  .elim-btn:disabled { opacity: 0.5; }
+
+  .leaderboard { background: var(--card); border-radius: 16px; padding: 6px 12px; margin-top: 8px; }
+  .lb-row { display: flex; align-items: center; gap: 10px; padding: 12px 4px; border-bottom: 1px solid #222; }
+  .lb-row:last-child { border-bottom: none; }
+  .lb-row.elim { opacity: 0.55; }
+  .lb-rank { font-family: 'Bebas Neue'; font-size: 22px; width: 32px; color: var(--muted); }
+  .lb-rank.gold { color: gold; }
+  .lb-rank.silver { color: silver; }
+  .lb-rank.bronze { color: #cd7f32; }
+  .lb-name { flex: 1; font-weight: 700; }
+  .lb-name.me { color: var(--rod); }
+  .lb-tag { font-size: 10px; background: var(--rod); color: white; padding: 2px 6px; border-radius: 4px; margin-left: 6px; vertical-align: middle; font-weight: 800; }
+  .lb-score { font-family: 'Bebas Neue'; font-size: 24px; }
+
+  .footer { text-align: center; color: var(--muted); font-size: 11px; margin-top: 24px; padding: 16px 0; }
+  .reset-btn { background: transparent; border: 1px solid #333; color: var(--muted); border-radius: 10px; padding: 8px 12px; font-size: 12px; cursor: pointer; }
+
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.85); display: none; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
+  .modal-bg.show { display: flex; }
+  .modal { background: var(--card); border-radius: 16px; padding: 22px; max-width: 360px; width: 100%; }
+  .modal h3 { font-size: 30px; margin-bottom: 4px; }
+  .modal p { color: var(--muted); font-size: 14px; margin: 0 0 14px; }
+  .modal .row { display: flex; gap: 8px; margin-top: 12px; }
+
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #222; color: white; padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 200; opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 80%; text-align: center; }
+  .toast.show { opacity: 1; }
+
+  .config-warn { background: #2a1a00; border: 1px solid var(--gul); color: var(--gul); padding: 14px; border-radius: 12px; font-size: 13px; line-height: 1.5; margin-bottom: 16px; }
+  .config-warn strong { color: white; display: block; margin-bottom: 4px; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Poengliste <span class="accent">17. mai</span></h1>
+  <div class="sub">For gutta. Tapper hverandre live.</div>
+
+  <div id="configWarn" class="config-warn" style="display:none;">
+    <strong>Firebase ikke koblet til</strong>
+    Åpne <code>index.html</code> og lim inn din Firebase-config. Se <code>README.md</code>.
+  </div>
+
+  <div class="player-bar">
+    <select id="playerSelect"></select>
+    <button class="btn" id="newPlayerBtn" title="Legg til spiller">+</button>
+  </div>
+
+  <div class="total-card" id="totalCard">
+    <div class="total-label" id="playerLabel">VELG SPILLER</div>
+    <div class="total-value" id="totalValue">0</div>
+    <div id="elimTag"></div>
+  </div>
+
+  <h2 class="section-title">Regler</h2>
+  <div id="rulesList"></div>
+
+  <button class="elim-btn" id="elimBtn">Catche klamma / aids / skabb / herpes</button>
+
+  <h2 class="section-title">Leaderboard</h2>
+  <div class="leaderboard" id="leaderboard"></div>
+
+  <div class="footer">
+    <button class="reset-btn" id="resetBtn">Nullstill mine poeng</button>
+    <div style="margin-top: 12px;">Lykke til, gutta. Ikke bli arrestert.</div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <h3>Hvem er du?</h3>
+    <p>Skriv navnet ditt. Alle ser hverandres score.</p>
+    <input id="nameInput" class="name-input" placeholder="Navn" maxlength="20" autocomplete="off">
+    <div class="row">
+      <button class="btn btn-ghost" id="modalCancel" style="flex:1">Avbryt</button>
+      <button class="btn" id="modalOk" style="flex:1">Kjør</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
+  import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
+
+  // ============ FIREBASE CONFIG ============
+  // BYTT UT MED DIN EGEN CONFIG. Se README.md for oppskrift.
+  const firebaseConfig = {
+    apiKey: "AIzaSyA0XFcyB2aqxFLv0cY20eO8lvC5BxEQeF8",
+    authDomain: "poengliste-17mai.firebaseapp.com",
+    projectId: "poengliste-17mai",
+    storageBucket: "poengliste-17mai.firebasestorage.app",
+    messagingSenderId: "1012007649237",
+    appId: "1:1012007649237:web:8318cd1fe4fe70bf73075c"
+  };
+  // ==========================================
+
+  const RULES = [
+    { id: 'is',          emoji: '🍦',   name: 'Is',                                            pts: 0.5 },
+    { id: 'shellpolse',  emoji: '🌭',   name: 'Shell pølse',                                   pts: 0.5 },
+    { id: 'fapa',        emoji: '👅',   name: 'Få på',                                         pts: 5,   note: 'Hvis på dagen: må være i bunad' },
+    { id: 'pils',        emoji: '🍺',   name: 'Per pils',                                      pts: 1,   note: 'Cider og hard seltzer telles ikke' },
+    { id: 'denge',       emoji: '🥊',   name: 'Denge (må vinne)',                              pts: 8 },
+    { id: 'denge100',    emoji: '🥊💪', name: 'Denge gutt som benker 100 kg+',                 pts: 10 },
+    { id: 'utro',        emoji: '💔',   name: 'Være utro',                                     pts: 10 },
+    { id: 'chuggekonk',  emoji: '🍻',   name: 'Chuggekonk mot voksen 25+ og vinne',            pts: 3 },
+    { id: 'fengsel',     emoji: '🚓',   name: 'Glattcelle eller varetektsfengsel',             pts: 40 },
+    { id: 'naelleforh',  emoji: '🍆💕', name: 'Nælle i finstasen (i forhold)',                 pts: 5 },
+    { id: 'naelle',      emoji: '🍆🍑', name: 'Nælle i finstasen',                             pts: 30 },
+    { id: 'eldre10',     emoji: '👩',   name: 'Få på med dame +10 år',                         pts: 10 },
+    { id: 'eldre20',     emoji: '👵',   name: 'Få på med dame +20 år',                         pts: 20 },
+    { id: 'spy',         emoji: '🤮',   name: 'Spy',                                           pts: -3, neg: true },
+    { id: 'spymobler',   emoji: '🛋️',   name: 'Spy på møbler eller lignende',                  pts: -5, neg: true },
+  ];
+
+  const configured = firebaseConfig.apiKey && !firebaseConfig.apiKey.includes('PASTE');
+  if (!configured) document.getElementById('configWarn').style.display = 'block';
+
+  let players = {};
+  let myId = localStorage.getItem('myId') || null;
+  let db = null, playersCol = null;
+
+  if (configured) {
+    const app = initializeApp(firebaseConfig);
+    db = getFirestore(app);
+    playersCol = collection(db, 'poengliste-2026');
+    onSnapshot(playersCol, (snap) => {
+      players = {};
+      snap.forEach(d => { players[d.id] = { id: d.id, ...d.data() }; });
+      render();
+    }, (err) => {
+      console.error(err);
+      toast('Klarer ikke koble til Firebase. Sjekk config og regler.');
+    });
+  }
+
+  function $(id) { return document.getElementById(id); }
+  function toast(msg) {
+    const t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(t._timer); t._timer = setTimeout(() => t.classList.remove('show'), 1900);
+  }
+  function calcTotal(p) {
+    if (!p || !p.scores) return 0;
+    let total = 0;
+    for (const r of RULES) total += (p.scores[r.id] || 0) * r.pts;
+    return total;
+  }
+  function fmt(n) {
+    if (Number.isInteger(n)) return n.toString();
+    return n.toFixed(1).replace('.', ',');
+  }
+  function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  function render() {
+    const sel = $('playerSelect');
+    const sorted = Object.values(players).sort((a,b) => a.name.localeCompare(b.name, 'no'));
+    sel.innerHTML = '<option value="">— velg deg selv —</option>' +
+      sorted.map(p => `<option value="${p.id}" ${p.id===myId?'selected':''}>${escapeHtml(p.name)}</option>`).join('');
+
+    const me = myId ? players[myId] : null;
+
+    const card = $('totalCard');
+    if (me) {
+      $('playerLabel').textContent = me.name.toUpperCase();
+      $('totalValue').textContent = fmt(calcTotal(me));
+      card.classList.toggle('eliminated', !!me.eliminated);
+      $('elimTag').innerHTML = me.eliminated ? '<span class="eliminated-tag">ELIMINERT</span>' : '';
+    } else {
+      $('playerLabel').textContent = 'VELG SPILLER';
+      $('totalValue').textContent = '0';
+      card.classList.remove('eliminated');
+      $('elimTag').innerHTML = '';
+    }
+
+    const rl = $('rulesList');
+    rl.innerHTML = RULES.map(r => {
+      const c = me ? (me.scores?.[r.id] || 0) : 0;
+      const sign = r.pts < 0 ? '' : '+';
+      return `<div class="rule ${r.neg?'negative':''}">
+        <div class="emoji">${r.emoji}</div>
+        <div class="body">
+          <div class="name">${escapeHtml(r.name)}</div>
+          ${r.note?`<div class="note">${escapeHtml(r.note)}</div>`:''}
+          <div class="pts">${sign}${fmt(r.pts)} p</div>
+        </div>
+        <div class="ctrl">
+          <button data-rule="${r.id}" data-delta="-1" ${!me||c<=0?'disabled':''}>−</button>
+          <span class="count">${c}</span>
+          <button class="plus" data-rule="${r.id}" data-delta="1" ${!me?'disabled':''}>+</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    const eb = $('elimBtn');
+    eb.disabled = !me;
+    if (me?.eliminated) {
+      eb.textContent = 'Du er eliminert. Trykk for å angre.';
+      eb.classList.add('is-elim');
+    } else {
+      eb.textContent = 'Catche klamma / aids / skabb / herpes';
+      eb.classList.remove('is-elim');
+    }
+
+    const lb = $('leaderboard');
+    const ranked = Object.values(players).map(p => ({...p, total: calcTotal(p)}))
+      .sort((a,b) => {
+        if (a.eliminated && !b.eliminated) return 1;
+        if (!a.eliminated && b.eliminated) return -1;
+        return b.total - a.total;
+      });
+    if (ranked.length === 0) {
+      lb.innerHTML = '<div style="text-align:center;color:#888;padding:14px;">Ingen spillere enda. Trykk + over for å starte.</div>';
+    } else {
+      let aliveIdx = 0;
+      lb.innerHTML = ranked.map(p => {
+        let rank, cls = '';
+        if (p.eliminated) {
+          rank = '☠';
+        } else {
+          aliveIdx++;
+          rank = aliveIdx;
+          if (aliveIdx === 1) cls = 'gold';
+          else if (aliveIdx === 2) cls = 'silver';
+          else if (aliveIdx === 3) cls = 'bronze';
+        }
+        return `<div class="lb-row ${p.eliminated?'elim':''}">
+          <div class="lb-rank ${cls}">${rank}</div>
+          <div class="lb-name ${p.id===myId?'me':''}">${escapeHtml(p.name)}${p.eliminated?'<span class="lb-tag">ELIM</span>':''}</div>
+          <div class="lb-score">${fmt(p.total)}</div>
+        </div>`;
+      }).join('');
+    }
+  }
+
+  async function bumpRule(playerId, ruleId, delta) {
+    if (!db) return;
+    const p = players[playerId];
+    if (!p) return;
+    const cur = p.scores?.[ruleId] || 0;
+    const next = Math.max(0, cur + delta);
+    const newScores = { ...(p.scores || {}), [ruleId]: next };
+    await setDoc(doc(playersCol, playerId), { scores: newScores, updatedAt: serverTimestamp() }, { merge: true });
+  }
+
+  async function toggleElim(playerId) {
+    if (!db) return;
+    const p = players[playerId];
+    if (!p) return;
+    await setDoc(doc(playersCol, playerId), { eliminated: !p.eliminated, updatedAt: serverTimestamp() }, { merge: true });
+  }
+
+  async function createPlayer(name) {
+    if (!db) { toast('Firebase ikke koblet til'); return; }
+    const slug = name.toLowerCase().replace(/[^a-z0-9æøå]+/g, '-').replace(/^-|-$/g, '').replace(/æ/g,'ae').replace(/ø/g,'o').replace(/å/g,'a');
+    const id = (slug || 'spiller') + '-' + Math.random().toString(36).slice(2,6);
+    await setDoc(doc(playersCol, id), {
+      name: name.trim(),
+      scores: {},
+      eliminated: false,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    myId = id;
+    localStorage.setItem('myId', id);
+    render();
+  }
+
+  async function resetMine() {
+    if (!myId || !db) return;
+    if (!confirm('Helt sikker? Alle dine poeng blir nullstilt.')) return;
+    await setDoc(doc(playersCol, myId), { scores: {}, eliminated: false, updatedAt: serverTimestamp() }, { merge: true });
+    toast('Nullstilt');
+  }
+
+  $('rulesList').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-rule]');
+    if (!btn || !myId) return;
+    bumpRule(myId, btn.dataset.rule, parseInt(btn.dataset.delta, 10));
+  });
+
+  $('elimBtn').addEventListener('click', () => {
+    if (!myId) { toast('Velg deg selv først'); return; }
+    toggleElim(myId);
+  });
+
+  $('playerSelect').addEventListener('change', e => {
+    myId = e.target.value || null;
+    if (myId) localStorage.setItem('myId', myId); else localStorage.removeItem('myId');
+    render();
+  });
+
+  $('newPlayerBtn').addEventListener('click', () => {
+    $('nameInput').value = '';
+    $('modalBg').classList.add('show');
+    setTimeout(() => $('nameInput').focus(), 50);
+  });
+
+  $('modalCancel').addEventListener('click', () => $('modalBg').classList.remove('show'));
+  $('modalOk').addEventListener('click', () => {
+    const name = $('nameInput').value.trim();
+    if (!name) { toast('Skriv navn'); return; }
+    createPlayer(name);
+    $('modalBg').classList.remove('show');
+  });
+  $('nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('modalOk').click(); });
+  $('resetBtn').addEventListener('click', resetMine);
+
+  render();
+</script>
+</body>
+</html>
