@@ -1,6 +1,14 @@
 # Poengliste 17. mai
 
-Sanntids-poengliste for gutta. Single-file HTML + Firebase + PWA. Legg på hjemskjermen i Safari.
+## 👉 [ÅPNE APPEN](https://istadjacob-png.github.io/poengliste-17mai/) 👈
+
+**Live URL:** https://istadjacob-png.github.io/poengliste-17mai/
+
+Åpne i **Safari** på iPhone → del-knappen → **"Legg til på Hjem-skjerm"**.
+
+---
+
+Sanntids-poengliste for gutta. Single-file HTML + Firebase + PWA.
 
 ## Hva du trenger
 
