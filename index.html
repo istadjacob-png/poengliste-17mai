@@ -215,6 +215,83 @@
   .field { margin-bottom: 12px; }
   .field label { display: block; color: var(--muted); font-size: 11px; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; }
   .field input { width: 100%; background: var(--card2); color: var(--tekst); border: 1px solid #333; border-radius: 8px; padding: 11px; font-size: 16px; }
+
+  .pending-card {
+    background: var(--card);
+    border: 2px solid var(--gul);
+    border-radius: 14px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .pending-card .pending-row { display: flex; align-items: center; gap: 12px; }
+  .pending-card .pending-emoji { font-size: 26px; min-width: 38px; text-align: center; }
+  .pending-card .pending-text { flex: 1; min-width: 0; }
+  .pending-card .pending-claimer { font-weight: 800; font-size: 16px; }
+  .pending-card .pending-detail { color: var(--muted); font-size: 13px; margin-top: 2px; line-height: 1.35; }
+  .pending-card .pending-detail strong { color: var(--gul); }
+  .pending-actions { display: flex; gap: 8px; }
+  .pending-actions button {
+    flex: 1;
+    border: none;
+    border-radius: 10px;
+    padding: 10px;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 16px;
+    letter-spacing: 1px;
+    cursor: pointer;
+  }
+  .pending-actions .approve { background: #16a34a; color: white; }
+  .pending-actions .deny { background: var(--card2); color: var(--gul); border: 1px solid var(--gul); }
+
+  .my-pending-row {
+    background: var(--card);
+    border-radius: 12px;
+    padding: 10px 14px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .my-pending-row .mp-emoji { font-size: 20px; min-width: 28px; text-align: center; }
+  .my-pending-row .mp-text { flex: 1; min-width: 0; }
+  .my-pending-row .mp-name { font-weight: 700; font-size: 14px; line-height: 1.25; }
+  .my-pending-row .mp-witness { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .my-pending-row button {
+    background: transparent;
+    border: 1px solid #444;
+    color: var(--muted);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+  }
+
+  .witness-row {
+    background: var(--card2);
+    border: 1px solid #2a3550;
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 16px;
+    color: var(--tekst);
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .witness-row::after { content: '→'; color: var(--muted); font-size: 18px; }
+
+  .modal-sub { color: var(--muted); font-size: 14px; margin: 0 0 14px; line-height: 1.4; }
+  .modal-sub strong { color: var(--tekst); }
 </style>
 </head>
 <body>
@@ -270,11 +347,25 @@
     <div id="elimTag"></div>
   </div>
 
+  <div id="pendingWitnessSection" style="display:none;">
+    <div class="section-row">
+      <h2 style="color: var(--gul);">Verifiser</h2>
+    </div>
+    <div id="pendingWitnessList"></div>
+  </div>
+
   <div class="section-row">
     <h2>Regler</h2>
     <button class="icon-btn" id="editRulesBtn" title="Endre regler">✏️</button>
   </div>
   <div id="rulesList"></div>
+
+  <div id="myPendingSection" style="display:none;">
+    <div class="section-row">
+      <h2>Mine forespørsler</h2>
+    </div>
+    <div id="myPendingList"></div>
+  </div>
 
   <button class="elim-btn" id="elimBtn">Catche klamma / aids / skabb / herpes</button>
 
@@ -337,11 +428,22 @@
   </div>
 </div>
 
+<div class="modal-bg" id="witnessBg">
+  <div class="modal modal-wide">
+    <h3>Hvem så det?</h3>
+    <p id="witnessSub" class="modal-sub"></p>
+    <div class="scroll-body" id="witnessList"></div>
+    <div class="footer-row">
+      <button class="btn btn-ghost" id="witnessCancel" style="flex:1">Avbryt</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
-  import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, deleteDoc } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
+  import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, deleteDoc, addDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 
   // ============ FIREBASE CONFIG ============
   // BYTT UT MED DIN EGEN CONFIG. Se README.md for oppskrift.
@@ -379,15 +481,32 @@
 
   let players = {};
   let rules = DEFAULT_RULES.slice();
+  let verifs = [];
   let myId = localStorage.getItem('myId') || null;
-  let db = null, playersCol = null;
+  let db = null, playersCol = null, verifsCol = null;
   let didSeed = false;
   let editingIdx = -1;
+  let pickerRuleId = null;
 
   if (configured) {
     const app = initializeApp(firebaseConfig);
     db = getFirestore(app);
     playersCol = collection(db, 'poengliste-2026');
+    verifsCol = collection(db, 'verifications-2026');
+    onSnapshot(verifsCol, (snap) => {
+      snap.docChanges().forEach(change => {
+        if (change.type === 'modified') {
+          const v = { id: change.doc.id, ...change.doc.data() };
+          if (v.status !== 'pending' && v.claimerId === myId) {
+            if (v.status === 'approved') toast(`${v.witnessName} godkjente +${fmt(v.pts)}p for "${v.ruleName}"`);
+            else if (v.status === 'denied') toast(`${v.witnessName} avviste "${v.ruleName}"`);
+          }
+        }
+      });
+      verifs = [];
+      snap.forEach(d => verifs.push({ id: d.id, ...d.data() }));
+      render();
+    });
     onSnapshot(playersCol, (snap) => {
       players = {};
       let foundRules = false;
@@ -439,6 +558,123 @@
     return n.toFixed(1).replace('.', ',');
   }
   function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  function pendingForMe() { return verifs.filter(v => v.status === 'pending' && v.witnessId === myId); }
+  function pendingByMe() { return verifs.filter(v => v.status === 'pending' && v.claimerId === myId); }
+
+  function renderPendingSections() {
+    const pwSection = $('pendingWitnessSection');
+    const pwList = $('pendingWitnessList');
+    const forMe = myId ? pendingForMe() : [];
+    if (forMe.length === 0) {
+      pwSection.style.display = 'none';
+    } else {
+      pwSection.style.display = '';
+      pwList.innerHTML = forMe.map(v => `
+        <div class="pending-card">
+          <div class="pending-row">
+            <div class="pending-emoji">${v.ruleEmoji || '•'}</div>
+            <div class="pending-text">
+              <div class="pending-claimer">${escapeHtml(v.claimerName)}</div>
+              <div class="pending-detail">vil ha <strong>+${fmt(v.pts)}p</strong> for "${escapeHtml(v.ruleName)}"</div>
+            </div>
+          </div>
+          <div class="pending-actions">
+            <button class="approve" data-id="${v.id}">Godkjenn</button>
+            <button class="deny" data-id="${v.id}">Avvis</button>
+          </div>
+        </div>
+      `).join('');
+    }
+    const mpSection = $('myPendingSection');
+    const mpList = $('myPendingList');
+    const byMe = myId ? pendingByMe() : [];
+    if (byMe.length === 0) {
+      mpSection.style.display = 'none';
+    } else {
+      mpSection.style.display = '';
+      mpList.innerHTML = byMe.map(v => `
+        <div class="my-pending-row">
+          <div class="mp-emoji">${v.ruleEmoji || '•'}</div>
+          <div class="mp-text">
+            <div class="mp-name">+${fmt(v.pts)}p · ${escapeHtml(v.ruleName)}</div>
+            <div class="mp-witness">venter på ${escapeHtml(v.witnessName)}</div>
+          </div>
+          <button data-id="${v.id}">Trekk tilbake</button>
+        </div>
+      `).join('');
+    }
+  }
+
+  async function createVerif(witnessId, ruleId) {
+    if (!db || !myId || !verifsCol) return;
+    const me = players[myId];
+    const witness = players[witnessId];
+    const rule = rules.find(r => r.id === ruleId);
+    if (!me || !witness || !rule) return;
+    await addDoc(verifsCol, {
+      claimerId: myId,
+      claimerName: me.name,
+      witnessId,
+      witnessName: witness.name,
+      ruleId,
+      ruleName: rule.name,
+      ruleEmoji: rule.emoji || '•',
+      pts: Number(rule.pts) || 0,
+      status: 'pending',
+      createdAt: serverTimestamp(),
+    });
+    toast(`Sendt til ${witness.name}`);
+  }
+
+  async function approveVerif(id) {
+    if (!db || !verifsCol) return;
+    const v = verifs.find(x => x.id === id);
+    if (!v || v.status !== 'pending') return;
+    const claimer = players[v.claimerId];
+    const newScores = { ...(claimer?.scores || {}), [v.ruleId]: (claimer?.scores?.[v.ruleId] || 0) + 1 };
+    const batch = writeBatch(db);
+    batch.update(doc(verifsCol, id), { status: 'approved', resolvedAt: serverTimestamp() });
+    batch.set(doc(playersCol, v.claimerId), { scores: newScores, updatedAt: serverTimestamp() }, { merge: true });
+    await batch.commit();
+    toast('Godkjent');
+  }
+
+  async function denyVerif(id) {
+    if (!db || !verifsCol) return;
+    await setDoc(doc(verifsCol, id), { status: 'denied', resolvedAt: serverTimestamp() }, { merge: true });
+    toast('Avvist');
+  }
+
+  async function cancelVerif(id) {
+    if (!db || !verifsCol) return;
+    if (!confirm('Trekke tilbake forespørselen?')) return;
+    await deleteDoc(doc(verifsCol, id));
+    toast('Trukket tilbake');
+  }
+
+  function openWitnessPicker(ruleId) {
+    if (!myId) { toast('Velg deg selv først'); return; }
+    const rule = rules.find(r => r.id === ruleId);
+    if (!rule) return;
+    pickerRuleId = ruleId;
+    $('witnessSub').innerHTML = `${rule.emoji || '•'} <strong>${escapeHtml(rule.name)}</strong> · +${fmt(rule.pts)}p`;
+    const others = Object.values(players).filter(p => p.id !== myId);
+    const list = $('witnessList');
+    if (others.length === 0) {
+      list.innerHTML = '<div style="text-align:center;color:#888;padding:20px;">Ingen andre spillere ennå. Få noen til å bli med først.</div>';
+    } else {
+      list.innerHTML = others.sort((a,b) => a.name.localeCompare(b.name, 'no')).map(p =>
+        `<button class="witness-row" data-witness="${p.id}">${escapeHtml(p.name)}</button>`
+      ).join('');
+    }
+    $('witnessBg').classList.add('show');
+  }
+
+  function closeWitnessPicker() {
+    $('witnessBg').classList.remove('show');
+    pickerRuleId = null;
+  }
 
   function render() {
     const sel = $('playerSelect');
@@ -520,6 +756,8 @@
       }).join('');
     }
 
+    renderPendingSections();
+
     if ($('adminModalBg').classList.contains('show')) renderAdmin();
   }
 
@@ -566,7 +804,38 @@
   $('rulesList').addEventListener('click', e => {
     const btn = e.target.closest('button[data-rule]');
     if (!btn || !myId) return;
-    bumpRule(myId, btn.dataset.rule, parseInt(btn.dataset.delta, 10));
+    const ruleId = btn.dataset.rule;
+    const delta = parseInt(btn.dataset.delta, 10);
+    if (delta > 0) {
+      const rule = rules.find(r => r.id === ruleId);
+      if (rule && rule.pts > 0) {
+        openWitnessPicker(ruleId);
+        return;
+      }
+    }
+    bumpRule(myId, ruleId, delta);
+  });
+
+  $('pendingWitnessList').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-id]');
+    if (!btn) return;
+    const id = btn.dataset.id;
+    if (btn.classList.contains('approve')) approveVerif(id);
+    else if (btn.classList.contains('deny')) denyVerif(id);
+  });
+
+  $('myPendingList').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-id]');
+    if (!btn) return;
+    cancelVerif(btn.dataset.id);
+  });
+
+  $('witnessCancel').addEventListener('click', closeWitnessPicker);
+  $('witnessList').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-witness]');
+    if (!btn || !pickerRuleId) return;
+    createVerif(btn.dataset.witness, pickerRuleId);
+    closeWitnessPicker();
   });
 
   $('elimBtn').addEventListener('click', () => {
