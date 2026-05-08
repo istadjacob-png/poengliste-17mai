@@ -53,6 +53,55 @@
   h1 .accent { color: var(--rod); }
   .sub { color: var(--muted); font-size: 13px; margin: 4px 0 16px; }
 
+  .header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .header-row h1 { flex: 1; min-width: 0; }
+
+  .inbox-btn {
+    position: relative;
+    background: var(--card);
+    border: 1px solid #2a3550;
+    color: var(--muted);
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    cursor: pointer;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-family: inherit;
+  }
+  .inbox-btn .inbox-icon { font-size: 26px; line-height: 1; }
+  .inbox-btn.has-pending {
+    background: var(--gul);
+    border-color: var(--gul);
+    animation: inbox-pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes inbox-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.55); }
+    50% { box-shadow: 0 0 0 10px rgba(245, 158, 11, 0); }
+  }
+  .inbox-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: var(--rod);
+    color: white;
+    font-size: 11px;
+    font-weight: 800;
+    border-radius: 10px;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Inter', sans-serif;
+    border: 2px solid var(--bg);
+    line-height: 1;
+  }
+
   .player-bar { display: flex; gap: 8px; margin-bottom: 16px; align-items: stretch; }
   select, input, button { font-family: inherit; font-size: 16px; }
   select, .name-input {
@@ -403,7 +452,13 @@
   </svg>
 </div>
 <div class="wrap">
-  <h1>Poengliste <span class="accent">17. mai</span></h1>
+  <div class="header-row">
+    <h1>Poengliste <span class="accent">17. mai</span></h1>
+    <button id="inboxBtn" class="inbox-btn" title="Forespørsler å verifisere" style="display:none;">
+      <span class="inbox-icon">📬</span>
+      <span id="inboxBadge" class="inbox-badge" style="display:none;">0</span>
+    </button>
+  </div>
   <div class="sub">For gutta. Tapper hverandre live.</div>
 
   <div id="configWarn" class="config-warn" style="display:none;">
@@ -429,13 +484,6 @@
     <div class="total-label" id="playerLabel">VELG SPILLER</div>
     <div class="total-value" id="totalValue">0</div>
     <div id="elimTag"></div>
-  </div>
-
-  <div id="pendingWitnessSection" style="display:none;">
-    <div class="section-row">
-      <h2 style="color: var(--gul);">Verifiser</h2>
-    </div>
-    <div id="pendingWitnessList"></div>
   </div>
 
   <div class="section-row">
@@ -508,6 +556,17 @@
     <div class="row">
       <button class="btn btn-ghost" id="erCancel" style="flex:1">Avbryt</button>
       <button class="btn" id="erSave" style="flex:1">Lagre</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="inboxBg">
+  <div class="modal modal-wide">
+    <h3>Forespørsler å verifisere</h3>
+    <p class="modal-sub">Folk som har bedt deg være vitne.</p>
+    <div class="scroll-body" id="inboxBody"></div>
+    <div class="footer-row">
+      <button class="btn btn-ghost" id="inboxClose" style="flex:1">Lukk</button>
     </div>
   </div>
 </div>
@@ -735,30 +794,58 @@
     btn.style.display = Notification.permission === 'default' ? '' : 'none';
   }
 
-  function renderPendingSections() {
-    const pwSection = $('pendingWitnessSection');
-    const pwList = $('pendingWitnessList');
+  function renderInbox() {
+    const btn = $('inboxBtn');
+    const badge = $('inboxBadge');
+    const forMe = myId ? pendingForMe() : [];
+    if (!myId) {
+      btn.style.display = 'none';
+    } else {
+      btn.style.display = '';
+      if (forMe.length > 0) {
+        badge.textContent = forMe.length;
+        badge.style.display = '';
+        btn.classList.add('has-pending');
+      } else {
+        badge.style.display = 'none';
+        btn.classList.remove('has-pending');
+      }
+    }
+    if ($('inboxBg').classList.contains('show')) renderInboxBody();
+  }
+
+  function renderInboxBody() {
+    const body = $('inboxBody');
     const forMe = myId ? pendingForMe() : [];
     if (forMe.length === 0) {
-      pwSection.style.display = 'none';
-    } else {
-      pwSection.style.display = '';
-      pwList.innerHTML = forMe.map(v => `
-        <div class="pending-card">
-          <div class="pending-row">
-            <div class="pending-emoji">${v.ruleEmoji || '•'}</div>
-            <div class="pending-text">
-              <div class="pending-claimer">${escapeHtml(v.claimerName)}</div>
-              <div class="pending-detail">vil ha <strong>+${fmt(v.pts)}p</strong> for "${escapeHtml(v.ruleName)}"</div>
-            </div>
-          </div>
-          <div class="pending-actions">
-            <button class="approve" data-id="${v.id}">Godkjenn</button>
-            <button class="deny" data-id="${v.id}">Avvis</button>
+      body.innerHTML = '<div style="text-align:center;color:#888;padding:30px 14px;">Ingen forespørsler akkurat nå.</div>';
+      return;
+    }
+    body.innerHTML = forMe.map(v => `
+      <div class="pending-card">
+        <div class="pending-row">
+          <div class="pending-emoji">${v.ruleEmoji || '•'}</div>
+          <div class="pending-text">
+            <div class="pending-claimer">${escapeHtml(v.claimerName)}</div>
+            <div class="pending-detail">vil ha <strong>+${fmt(v.pts)}p</strong> for "${escapeHtml(v.ruleName)}"</div>
           </div>
         </div>
-      `).join('');
-    }
+        <div class="pending-actions">
+          <button class="approve" data-id="${v.id}">Godkjenn</button>
+          <button class="deny" data-id="${v.id}">Avvis</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function openInbox() {
+    if (!myId) return;
+    renderInboxBody();
+    $('inboxBg').classList.add('show');
+  }
+
+  function renderPendingSections() {
+    renderInbox();
     const mpSection = $('myPendingSection');
     const mpList = $('myPendingList');
     const byMe = myId ? pendingByMe() : [];
@@ -1058,7 +1145,9 @@
     bumpRule(myId, ruleId, delta);
   });
 
-  $('pendingWitnessList').addEventListener('click', e => {
+  $('inboxBtn').addEventListener('click', openInbox);
+  $('inboxClose').addEventListener('click', () => $('inboxBg').classList.remove('show'));
+  $('inboxBody').addEventListener('click', e => {
     const btn = e.target.closest('button[data-id]');
     if (!btn) return;
     const id = btn.dataset.id;
