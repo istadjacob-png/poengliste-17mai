@@ -292,6 +292,81 @@
 
   .modal-sub { color: var(--muted); font-size: 14px; margin: 0 0 14px; line-height: 1.4; }
   .modal-sub strong { color: var(--tekst); }
+
+  .notif-banner {
+    width: 100%;
+    background: var(--card);
+    color: var(--gul);
+    border: 1px solid var(--gul);
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-bottom: 12px;
+    text-align: left;
+    line-height: 1.35;
+  }
+  .notif-banner:active { opacity: 0.8; }
+
+  .me-chip {
+    flex: 1;
+    background: var(--card);
+    border: 1px solid #2a3550;
+    border-radius: 12px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 800;
+    font-size: 16px;
+    color: var(--tekst);
+    gap: 8px;
+  }
+  .me-chip .me-edit-btn {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 18px;
+    padding: 4px 8px;
+    font-family: inherit;
+    line-height: 1;
+  }
+  .me-chip .me-edit-btn:active { color: var(--tekst); }
+
+  .player-row {
+    background: var(--card2);
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .player-row .pr-name { flex: 1; font-weight: 700; }
+  .player-row .pr-name .me-tag {
+    font-size: 10px;
+    background: var(--rod);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 6px;
+    vertical-align: middle;
+    font-weight: 800;
+  }
+  .player-row .pr-del {
+    background: transparent;
+    border: 1px solid #5a1f1f;
+    color: #f87171;
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+  }
 </style>
 </head>
 <body>
@@ -336,10 +411,19 @@
     Åpne <code>index.html</code> og lim inn din Firebase-config. Se <code>README.md</code>.
   </div>
 
-  <div class="player-bar">
-    <select id="playerSelect"></select>
-    <button class="btn" id="newPlayerBtn" title="Legg til spiller">+</button>
+  <div class="player-bar" id="loginBar">
+    <button class="btn" id="newPlayerBtn" style="flex:1;">Lag deg som spiller</button>
   </div>
+
+  <div class="player-bar" id="meBar" style="display:none;">
+    <div class="me-chip">
+      <span id="meName">—</span>
+      <button class="me-edit-btn" id="renameBtn" title="Endre navn">✏️</button>
+    </div>
+    <button class="icon-btn" id="adminBtn" title="Admin" style="display:none;">⚙️</button>
+  </div>
+
+  <button id="notifEnableBtn" class="notif-banner" style="display:none;">🔔 Skru på varsler — så får du beskjed når noen ber om verifisering</button>
 
   <div class="total-card" id="totalCard">
     <div class="total-label" id="playerLabel">VELG SPILLER</div>
@@ -428,6 +512,29 @@
   </div>
 </div>
 
+<div class="modal-bg" id="renameBg">
+  <div class="modal">
+    <h3>Endre navn</h3>
+    <input id="renameInput" class="name-input" placeholder="Navn" maxlength="20" autocomplete="off">
+    <div class="row">
+      <button class="btn btn-ghost" id="renameCancel" style="flex:1">Avbryt</button>
+      <button class="btn" id="renameSave" style="flex:1">Lagre</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="adminPlayersBg">
+  <div class="modal modal-wide">
+    <h3>Admin · Spillere</h3>
+    <p class="modal-sub">Slett spillere du vil fjerne fra spillet.</p>
+    <div class="scroll-body" id="adminPlayersBody"></div>
+    <div class="footer-row">
+      <button class="btn btn-ghost" id="adminPlayersClose" style="flex:1">Lukk</button>
+      <button class="btn" id="logoutBtn" style="flex:1">Logg av</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="witnessBg">
   <div class="modal modal-wide">
     <h3>Hvem så det?</h3>
@@ -476,6 +583,11 @@
 
   const RULES_VERSION = 2;
   const RULES_DOC_ID = '__rules__';
+
+  if (location.hash === '#admin') {
+    localStorage.setItem('adminMode', '1');
+    history.replaceState(null, '', location.pathname + location.search);
+  }
   const configured = firebaseConfig.apiKey && !firebaseConfig.apiKey.includes('PASTE');
   if (!configured) document.getElementById('configWarn').style.display = 'block';
 
@@ -487,6 +599,8 @@
   let didSeed = false;
   let editingIdx = -1;
   let pickerRuleId = null;
+  let isFirstVerifSnap = true;
+  const ORIGINAL_TITLE = 'Poengliste 17. mai';
 
   if (configured) {
     const app = initializeApp(firebaseConfig);
@@ -495,19 +609,28 @@
     verifsCol = collection(db, 'verifications-2026');
     onSnapshot(verifsCol, (snap) => {
       snap.docChanges().forEach(change => {
-        if (change.type === 'modified') {
-          const v = { id: change.doc.id, ...change.doc.data() };
-          if (v.status !== 'pending' && v.claimerId === myId) {
-            if (v.status === 'approved') toast(`${v.witnessName} godkjente +${fmt(v.pts)}p for "${v.ruleName}"`);
-            else if (v.status === 'denied') toast(`${v.witnessName} avviste "${v.ruleName}"`);
-          }
+        const v = { id: change.doc.id, ...change.doc.data() };
+        if (change.type === 'added' && !isFirstVerifSnap && v.status === 'pending' && v.witnessId === myId) {
+          notifyNewRequest(v);
+        }
+        if (change.type === 'modified' && v.status !== 'pending' && v.claimerId === myId) {
+          if (v.status === 'approved') toast(`${v.witnessName} godkjente +${fmt(v.pts)}p for "${v.ruleName}"`);
+          else if (v.status === 'denied') toast(`${v.witnessName} avviste "${v.ruleName}"`);
         }
       });
+      isFirstVerifSnap = false;
       verifs = [];
       snap.forEach(d => verifs.push({ id: d.id, ...d.data() }));
       render();
     });
     onSnapshot(playersCol, (snap) => {
+      snap.docChanges().forEach(change => {
+        if (change.type === 'removed' && change.doc.id === myId) {
+          myId = null;
+          localStorage.removeItem('myId');
+          toast('Spilleren din ble slettet');
+        }
+      });
       players = {};
       let foundRules = false;
       let storedVersion = 0;
@@ -561,6 +684,56 @@
 
   function pendingForMe() { return verifs.filter(v => v.status === 'pending' && v.witnessId === myId); }
   function pendingByMe() { return verifs.filter(v => v.status === 'pending' && v.claimerId === myId); }
+
+  function notifyNewRequest(v) {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try {
+        const n = new Notification(`${v.claimerName} ber deg verifisere`, {
+          body: `+${fmt(v.pts)}p for "${v.ruleName}"`,
+          icon: 'icon-192.png',
+          tag: `verif-${v.id}`,
+        });
+        n.onclick = () => { window.focus(); n.close(); };
+      } catch (e) {}
+    }
+    playBeep();
+    if (navigator.vibrate) { try { navigator.vibrate([200, 100, 200]); } catch (e) {} }
+    toast(`Ny forespørsel fra ${v.claimerName}`);
+  }
+
+  function playBeep() {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = new Ctx();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = 880;
+      o.type = 'sine';
+      g.gain.setValueAtTime(0.001, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+      o.start();
+      o.stop(ctx.currentTime + 0.4);
+      setTimeout(() => ctx.close(), 600);
+    } catch (e) {}
+  }
+
+  function updateTitle() {
+    const count = (myId ? pendingForMe() : []).length;
+    document.title = count > 0 ? `(${count}) ${ORIGINAL_TITLE}` : ORIGINAL_TITLE;
+  }
+
+  function updateNotifBanner() {
+    const btn = $('notifEnableBtn');
+    if (!btn) return;
+    if (!('Notification' in window) || !myId) {
+      btn.style.display = 'none';
+      return;
+    }
+    btn.style.display = Notification.permission === 'default' ? '' : 'none';
+  }
 
   function renderPendingSections() {
     const pwSection = $('pendingWitnessSection');
@@ -676,13 +849,79 @@
     pickerRuleId = null;
   }
 
-  function render() {
-    const sel = $('playerSelect');
-    const sorted = Object.values(players).sort((a,b) => a.name.localeCompare(b.name, 'no'));
-    sel.innerHTML = '<option value="">— velg deg selv —</option>' +
-      sorted.map(p => `<option value="${p.id}" ${p.id===myId?'selected':''}>${escapeHtml(p.name)}</option>`).join('');
-
+  function isAdmin() {
+    if (localStorage.getItem('adminMode') === '1') return true;
     const me = myId ? players[myId] : null;
+    if (me && me.name && me.name.toLowerCase().trim() === 'jacob') return true;
+    return false;
+  }
+
+  function openRename() {
+    if (!myId) return;
+    const me = players[myId];
+    if (!me) return;
+    $('renameInput').value = me.name;
+    $('renameBg').classList.add('show');
+    setTimeout(() => $('renameInput').focus(), 50);
+  }
+  async function saveRename() {
+    const newName = $('renameInput').value.trim();
+    if (!newName) { toast('Skriv navn'); return; }
+    if (!db || !myId) return;
+    await setDoc(doc(playersCol, myId), { name: newName, updatedAt: serverTimestamp() }, { merge: true });
+    $('renameBg').classList.remove('show');
+    toast('Navn endret');
+  }
+
+  function renderAdminPlayers() {
+    const body = $('adminPlayersBody');
+    if (!body) return;
+    const all = Object.values(players).sort((a,b) => a.name.localeCompare(b.name, 'no'));
+    if (all.length === 0) {
+      body.innerHTML = '<div style="text-align:center;color:#888;padding:20px;">Ingen spillere.</div>';
+      return;
+    }
+    body.innerHTML = all.map(p => `
+      <div class="player-row">
+        <div class="pr-name">${escapeHtml(p.name)}${p.id === myId ? '<span class="me-tag">DEG</span>' : ''}</div>
+        <button class="pr-del" data-pid="${p.id}">Slett</button>
+      </div>
+    `).join('');
+  }
+  function openAdminPlayers() {
+    if (!isAdmin()) { toast('Kun for admin'); return; }
+    renderAdminPlayers();
+    $('adminPlayersBg').classList.add('show');
+  }
+  async function deletePlayerById(pid) {
+    if (!isAdmin()) return;
+    const p = players[pid];
+    if (!p) return;
+    if (!confirm(`Slette ${p.name}? All score forsvinner.`)) return;
+    await deleteDoc(doc(playersCol, pid));
+    toast('Spiller slettet');
+  }
+  function logout() {
+    if (!confirm('Logg av? Da må du lage ny spiller.')) return;
+    localStorage.removeItem('myId');
+    myId = null;
+    $('adminPlayersBg').classList.remove('show');
+    render();
+    toast('Logget av');
+  }
+
+  function render() {
+    const me = myId ? players[myId] : null;
+
+    if (me) {
+      $('loginBar').style.display = 'none';
+      $('meBar').style.display = '';
+      $('meName').textContent = me.name;
+      $('adminBtn').style.display = isAdmin() ? '' : 'none';
+    } else {
+      $('loginBar').style.display = '';
+      $('meBar').style.display = 'none';
+    }
 
     const card = $('totalCard');
     if (me) {
@@ -757,8 +996,11 @@
     }
 
     renderPendingSections();
+    updateNotifBanner();
+    updateTitle();
 
     if ($('adminModalBg').classList.contains('show')) renderAdmin();
+    if ($('adminPlayersBg').classList.contains('show')) renderAdminPlayers();
   }
 
   async function bumpRule(playerId, ruleId, delta) {
@@ -843,10 +1085,32 @@
     toggleElim(myId);
   });
 
-  $('playerSelect').addEventListener('change', e => {
-    myId = e.target.value || null;
-    if (myId) localStorage.setItem('myId', myId); else localStorage.removeItem('myId');
-    render();
+  $('renameBtn').addEventListener('click', openRename);
+  $('renameCancel').addEventListener('click', () => $('renameBg').classList.remove('show'));
+  $('renameSave').addEventListener('click', saveRename);
+  $('renameInput').addEventListener('keydown', e => { if (e.key === 'Enter') saveRename(); });
+
+  $('adminBtn').addEventListener('click', openAdminPlayers);
+  $('adminPlayersClose').addEventListener('click', () => $('adminPlayersBg').classList.remove('show'));
+  $('logoutBtn').addEventListener('click', logout);
+  $('adminPlayersBody').addEventListener('click', e => {
+    const btn = e.target.closest('button.pr-del');
+    if (!btn) return;
+    deletePlayerById(btn.dataset.pid);
+  });
+
+  $('notifEnableBtn').addEventListener('click', async () => {
+    if (!('Notification' in window)) return;
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm === 'granted') {
+        toast('Varsler skrudd på 🔔');
+        try { new Notification('Varsler funker', { body: 'Du får beskjed når noen ber om verifisering', icon: 'icon-192.png' }); } catch (e) {}
+      } else if (perm === 'denied') {
+        toast('Varsler blokkert. Endre i nettleser-innstillinger.');
+      }
+    } catch (e) {}
+    updateNotifBanner();
   });
 
   $('newPlayerBtn').addEventListener('click', () => {
