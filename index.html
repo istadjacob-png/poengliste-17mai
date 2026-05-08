@@ -17,6 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   :root {
     --rod: #BA0C2F;
@@ -614,6 +615,16 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
   import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, deleteDoc, addDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 
+  // ============ TELEGRAM CONFIG ============
+  // Lim inn bot-token fra @BotFather. Tom string = ingen Telegram-varsler.
+  const TELEGRAM_BOT_TOKEN = '';
+  const tg = window.Telegram?.WebApp;
+  if (tg) { try { tg.ready(); tg.expand(); } catch (e) {} }
+  const myTelegramChatId = tg?.initDataUnsafe?.user?.id ?? null;
+  const APP_URL = location.origin + location.pathname;
+  let didSyncTelegramId = false;
+  // ==========================================
+
   // ============ FIREBASE CONFIG ============
   // BYTT UT MED DIN EGEN CONFIG. Se README.md for oppskrift.
   const firebaseConfig = {
@@ -710,6 +721,10 @@
         didSeed = true;
         saveRules(DEFAULT_RULES);
       }
+      if (!didSyncTelegramId && myId && myTelegramChatId && players[myId] && players[myId].telegramChatId !== myTelegramChatId) {
+        didSyncTelegramId = true;
+        setDoc(doc(playersCol, myId), { telegramChatId: myTelegramChatId, updatedAt: serverTimestamp() }, { merge: true });
+      }
       render();
     }, (err) => {
       console.error(err);
@@ -746,6 +761,21 @@
 
   function pendingForMe() { return verifs.filter(v => v.status === 'pending' && v.witnessId === myId); }
   function pendingByMe() { return verifs.filter(v => v.status === 'pending' && v.claimerId === myId); }
+
+  async function sendTelegramNotif(chatId, text) {
+    if (!TELEGRAM_BOT_TOKEN || !chatId) return;
+    try {
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text,
+          disable_web_page_preview: true,
+        })
+      });
+    } catch (e) { console.warn('Telegram notif failed', e); }
+  }
 
   function notifyNewRequest(v) {
     if ('Notification' in window && Notification.permission === 'granted') {
@@ -888,6 +918,10 @@
       createdAt: serverTimestamp(),
     });
     toast(`Sendt til ${witness.name}`);
+    if (witness.telegramChatId) {
+      sendTelegramNotif(witness.telegramChatId,
+        `🔔 ${me.name} ber deg verifisere\n+${fmt(Number(rule.pts) || 0)}p for "${rule.name}"\n\nÅpne: ${APP_URL}`);
+    }
   }
 
   async function approveVerif(id) {
@@ -1114,13 +1148,15 @@
     if (!db) { toast('Firebase ikke koblet til'); return; }
     const slug = name.toLowerCase().replace(/[^a-z0-9æøå]+/g, '-').replace(/^-|-$/g, '').replace(/æ/g,'ae').replace(/ø/g,'o').replace(/å/g,'a');
     const id = (slug || 'spiller') + '-' + Math.random().toString(36).slice(2,6);
-    await setDoc(doc(playersCol, id), {
+    const data = {
       name: name.trim(),
       scores: {},
       eliminated: false,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-    });
+    };
+    if (myTelegramChatId) data.telegramChatId = myTelegramChatId;
+    await setDoc(doc(playersCol, id), data);
     myId = id;
     localStorage.setItem('myId', id);
     render();
