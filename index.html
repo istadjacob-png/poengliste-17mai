@@ -18,18 +18,19 @@
   :root {
     --rod: #BA0C2F;
     --bla: #00205B;
-    --bg: #0a0a0a;
-    --card: #161616;
-    --card2: #1f1f1f;
+    --bg: #0a0f1c;
+    --card: #141a2c;
+    --card2: #1d2540;
     --tekst: #f5f5f5;
-    --muted: #888;
+    --muted: #8a93a8;
     --gul: #f59e0b;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; }
+  html { background: var(--bg); }
   body {
     font-family: 'Inter', -apple-system, system-ui, sans-serif;
-    background: var(--bg);
+    background: transparent;
     color: var(--tekst);
     min-height: 100vh;
     padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
@@ -38,7 +39,15 @@
     user-select: none;
   }
   input { -webkit-user-select: text; user-select: text; }
-  .wrap { max-width: 600px; margin: 0 auto; padding: 16px; }
+  .fjord-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+  .fjord-bg svg { width: 100%; height: 100%; display: block; }
+  .fjord-bg::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(10,15,28,0.45) 0%, rgba(10,15,28,0.32) 35%, rgba(10,15,28,0.6) 75%, rgba(10,15,28,0.88) 100%);
+  }
+  .wrap { max-width: 600px; margin: 0 auto; padding: 16px; position: relative; z-index: 1; }
   h1, h2, h3 { font-family: 'Bebas Neue', sans-serif; font-weight: 400; letter-spacing: 1px; margin: 0; text-transform: uppercase; }
   h1 { font-size: 44px; line-height: 1; }
   h1 .accent { color: var(--rod); }
@@ -209,6 +218,38 @@
 </style>
 </head>
 <body>
+<div class="fjord-bg" aria-hidden="true">
+  <svg viewBox="0 0 1200 1800" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#08152a"/>
+        <stop offset="0.4" stop-color="#162845"/>
+        <stop offset="0.8" stop-color="#243a5e"/>
+        <stop offset="1" stop-color="#2d4670"/>
+      </linearGradient>
+      <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#1a2a47"/>
+        <stop offset="0.5" stop-color="#0c1626"/>
+        <stop offset="1" stop-color="#040810"/>
+      </linearGradient>
+    </defs>
+    <rect width="1200" height="1800" fill="url(#sky)"/>
+    <circle cx="950" cy="280" r="60" fill="#f4d9a8" opacity="0.18"/>
+    <circle cx="950" cy="280" r="90" fill="#f4d9a8" opacity="0.06"/>
+    <path d="M0 780 L150 600 L300 690 L450 560 L600 660 L750 550 L900 640 L1050 560 L1200 620 L1200 1000 L0 1000 Z" fill="#243a5e" opacity="0.55"/>
+    <path d="M450 560 L468 595 L495 580 L505 615 L525 605 L450 615 Z" fill="#a8b8d8" opacity="0.5"/>
+    <path d="M750 550 L770 585 L800 570 L810 600 L830 590 L750 605 Z" fill="#a8b8d8" opacity="0.5"/>
+    <path d="M0 980 L130 770 L270 890 L410 740 L550 870 L690 750 L830 850 L970 780 L1110 870 L1200 820 L1200 1080 L0 1080 Z" fill="#152540" opacity="0.88"/>
+    <path d="M410 740 L427 778 L452 767 L463 802 L410 800 Z" fill="#8a9bbe" opacity="0.45"/>
+    <path d="M690 750 L707 788 L732 777 L743 812 L690 810 Z" fill="#8a9bbe" opacity="0.45"/>
+    <rect y="1050" width="1200" height="750" fill="url(#water)"/>
+    <path d="M0 1050 L130 1260 L270 1140 L410 1290 L550 1140 L690 1280 L830 1160 L970 1250 L1110 1140 L1200 1200 L1200 1050 Z" fill="#152540" opacity="0.22"/>
+    <line x1="0" y1="1330" x2="1200" y2="1330" stroke="#3a5078" stroke-width="1" opacity="0.18"/>
+    <line x1="0" y1="1430" x2="1200" y2="1430" stroke="#3a5078" stroke-width="1" opacity="0.13"/>
+    <line x1="0" y1="1530" x2="1200" y2="1530" stroke="#3a5078" stroke-width="1" opacity="0.09"/>
+    <line x1="0" y1="1630" x2="1200" y2="1630" stroke="#3a5078" stroke-width="1" opacity="0.06"/>
+  </svg>
+</div>
 <div class="wrap">
   <h1>Poengliste <span class="accent">17. mai</span></h1>
   <div class="sub">For gutta. Tapper hverandre live.</div>
@@ -315,23 +356,23 @@
   // ==========================================
 
   const DEFAULT_RULES = [
-    { id: 'is',          emoji: '🍦',   name: 'Is',                                            pts: 0.5 },
-    { id: 'shellpolse',  emoji: '🌭',   name: 'Shell pølse',                                   pts: 0.5 },
-    { id: 'fapa',        emoji: '👅',   name: 'Få på',                                         pts: 5,   note: 'Hvis på dagen: må være i bunad' },
-    { id: 'pils',        emoji: '🍺',   name: 'Per pils',                                      pts: 1,   note: 'Cider og hard seltzer telles ikke' },
-    { id: 'denge',       emoji: '🥊',   name: 'Denge (må vinne)',                              pts: 8 },
-    { id: 'denge100',    emoji: '🥊💪', name: 'Denge gutt som benker 100 kg+',                 pts: 10 },
-    { id: 'utro',        emoji: '💔',   name: 'Være utro',                                     pts: 10 },
-    { id: 'chuggekonk',  emoji: '🍻',   name: 'Chuggekonk mot voksen 25+ og vinne',            pts: 3 },
-    { id: 'fengsel',     emoji: '🚓',   name: 'Glattcelle eller varetektsfengsel',             pts: 40 },
-    { id: 'naelleforh',  emoji: '🍆💕', name: 'Nælle i finstasen (i forhold)',                 pts: 5 },
-    { id: 'naelle',      emoji: '🍆🍑', name: 'Nælle i finstasen',                             pts: 30 },
-    { id: 'eldre10',     emoji: '👩',   name: 'Få på med dame +10 år',                         pts: 10 },
-    { id: 'eldre20',     emoji: '👵',   name: 'Få på med dame +20 år',                         pts: 20 },
-    { id: 'spy',         emoji: '🤮',   name: 'Spy',                                           pts: -3 },
-    { id: 'spymobler',   emoji: '🛋️',   name: 'Spy på møbler eller lignende',                  pts: -5 },
+    { id: 'spy',              emoji: '🤮',   name: 'Spy',                                              pts: -3 },
+    { id: 'spymobler',        emoji: '🛋️',   name: 'Spy på møbler eller lignende',                     pts: -5 },
+    { id: 'blund',            emoji: '😴',   name: 'Ta seg en blund',                                  pts: -15 },
+    { id: 'shellpolse',       emoji: '🌭',   name: 'Shell pølse',                                      pts: 1 },
+    { id: 'chuggekonkvoksen', emoji: '🍺',   name: 'Chuggekonk mot tilfeldig voksen og vinne',         pts: 3,  note: 'Må være over 20 år' },
+    { id: 'fapa',             emoji: '👅',   name: 'Få på',                                            pts: 5,  note: 'Gjelder ikke om du er i forhold' },
+    { id: 'chuggekonkfam',    emoji: '🍻',   name: 'Chuggekonk med en i nær familie',                  pts: 5 },
+    { id: 'denge',            emoji: '🥊',   name: 'Denge (må vinne)',                                 pts: 10 },
+    { id: 'denge100',         emoji: '🥊💪', name: 'Denge gutt som benker 100 kg+',                    pts: 20 },
+    { id: 'eldre',            emoji: '💋',   name: 'Få på med eldre dame',                             pts: 10, note: 'Forhold teller ikke' },
+    { id: 'eldre20',          emoji: '👄',   name: 'Få på med dame +20 år eldre',                      pts: 25 },
+    { id: 'naelleforh',       emoji: '🍆💕', name: 'Nælle i finstasen (i forhold)',                    pts: 5 },
+    { id: 'naelle',           emoji: '🍆🍑💦', name: 'Nælle i finstasen',                              pts: 30 },
+    { id: 'fengsel',          emoji: '🚓',   name: 'Glattcelle / varetektsfengsel / fyllearrest',      pts: 40 },
   ];
 
+  const RULES_VERSION = 2;
   const RULES_DOC_ID = '__rules__';
   const configured = firebaseConfig.apiKey && !firebaseConfig.apiKey.includes('PASTE');
   if (!configured) document.getElementById('configWarn').style.display = 'block';
@@ -350,16 +391,18 @@
     onSnapshot(playersCol, (snap) => {
       players = {};
       let foundRules = false;
+      let storedVersion = 0;
       snap.forEach(d => {
         if (d.id === RULES_DOC_ID) {
           foundRules = true;
           const data = d.data();
+          storedVersion = Number(data.version) || 0;
           if (Array.isArray(data.rules)) rules = data.rules.map(r => ({ ...r, neg: r.pts < 0 }));
         } else {
           players[d.id] = { id: d.id, ...d.data() };
         }
       });
-      if (!foundRules && !didSeed) {
+      if ((!foundRules || storedVersion < RULES_VERSION) && !didSeed) {
         didSeed = true;
         saveRules(DEFAULT_RULES);
       }
@@ -377,7 +420,7 @@
       if (r.note) o.note = r.note;
       return o;
     });
-    await setDoc(doc(playersCol, RULES_DOC_ID), { rules: clean, updatedAt: serverTimestamp() });
+    await setDoc(doc(playersCol, RULES_DOC_ID), { rules: clean, version: RULES_VERSION, updatedAt: serverTimestamp() });
   }
 
   function $(id) { return document.getElementById(id); }
