@@ -740,6 +740,9 @@
       downvotes = [];
       snap.forEach(d => downvotes.push({ id: d.id, ...d.data() }));
       render();
+    }, (err) => {
+      console.error('downvotes snapshot error', err);
+      toast('Avstemninger: ' + (err?.code || err?.message || 'feil'));
     });
     onSnapshot(verifsCol, (snap) => {
       snap.docChanges().forEach(change => {
@@ -1427,10 +1430,15 @@
       updatedAt: serverTimestamp(),
     };
     if (myTelegramChatId) data.telegramChatId = myTelegramChatId;
-    await setDoc(doc(playersCol, id), data);
-    myId = id;
-    localStorage.setItem('myId', id);
-    render();
+    try {
+      await setDoc(doc(playersCol, id), data);
+      myId = id;
+      localStorage.setItem('myId', id);
+      render();
+    } catch (e) {
+      console.error('createPlayer failed', e);
+      toast('Klarte ikke logge inn: ' + (e?.code || e?.message || 'ukjent feil'));
+    }
   }
 
   async function resetMine() {
