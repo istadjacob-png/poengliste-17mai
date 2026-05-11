@@ -742,7 +742,7 @@
       render();
     }, (err) => {
       console.error('downvotes snapshot error', err);
-      toast('Avstemninger: ' + (err?.code || err?.message || 'feil'));
+      toast('Avstemninger: ' + (err?.code || err?.message || 'feil'), true);
     });
     onSnapshot(verifsCol, (snap) => {
       snap.docChanges().forEach(change => {
@@ -792,7 +792,7 @@
       render();
     }, (err) => {
       console.error(err);
-      toast('Klarer ikke koble til Firebase. Sjekk config og regler.');
+      toast('Klarer ikke koble til Firebase. Sjekk config og regler.', true);
     });
   }
 
@@ -807,9 +807,9 @@
   }
 
   function $(id) { return document.getElementById(id); }
-  function toast(msg) {
+  function toast(msg, sticky) {
     const t = $('toast'); t.textContent = msg; t.classList.add('show');
-    clearTimeout(t._timer); t._timer = setTimeout(() => t.classList.remove('show'), 1900);
+    clearTimeout(t._timer); t._timer = setTimeout(() => t.classList.remove('show'), sticky ? 5000 : 1900);
   }
   function calcTotal(p) {
     if (!p || !p.scores) return 0;
@@ -1172,9 +1172,9 @@
   }
 
   function openDownvoteModal() {
-    if (!myId) { toast('Velg deg selv først'); return; }
+    if (!myId) { promptLogin(); return; }
     const eligible = eligibleVoterCount(null) - 1;
-    if (eligible < 2) { toast('Trenger minst 2 andre spillere som kan stemme'); return; }
+    if (eligible < 2) { toast('Trenger minst 2 andre spillere som kan stemme', true); return; }
     downvoteTargetSel = null;
     renderDownvoteStep();
     $('downvoteBg').classList.add('show');
@@ -1222,7 +1222,7 @@
   }
 
   function openWitnessPicker(ruleId) {
-    if (!myId) { toast('Velg deg selv først'); return; }
+    if (!myId) { promptLogin(); return; }
     const rule = rules.find(r => r.id === ruleId);
     if (!rule) return;
     pickerRuleId = ruleId;
@@ -1345,16 +1345,16 @@
         <div class="ctrl">
           <button data-rule="${r.id}" data-delta="-1" ${!me||c<=0?'disabled':''}>−</button>
           <span class="count">${c}</span>
-          <button class="plus" data-rule="${r.id}" data-delta="1" ${!me?'disabled':''}>+</button>
+          <button class="plus" data-rule="${r.id}" data-delta="1">+</button>
         </div>
       </div>`;
     }).join('');
 
     const ab = $('anmeldBtn');
-    if (ab) ab.disabled = !me;
+    if (ab) ab.disabled = false;
 
     const eb = $('elimBtn');
-    eb.disabled = !me;
+    eb.disabled = false;
     if (me?.eliminated) {
       eb.textContent = 'Du er eliminert. Trykk for å angre.';
       eb.classList.add('is-elim');
@@ -1432,12 +1432,15 @@
     if (myTelegramChatId) data.telegramChatId = myTelegramChatId;
     try {
       await setDoc(doc(playersCol, id), data);
+      players[id] = { id, ...data };
       myId = id;
       localStorage.setItem('myId', id);
       render();
+      toast(`Logget inn som ${name.trim()}`);
     } catch (e) {
       console.error('createPlayer failed', e);
-      toast('Klarte ikke logge inn: ' + (e?.code || e?.message || 'ukjent feil'));
+      toast('Klarte ikke logge inn: ' + (e?.code || e?.message || 'ukjent feil'), true);
+      throw e;
     }
   }
 
@@ -1448,9 +1451,14 @@
     toast('Nullstilt');
   }
 
+  function promptLogin() {
+    $('newPlayerBtn').click();
+  }
+
   $('rulesList').addEventListener('click', e => {
     const btn = e.target.closest('button[data-rule]');
-    if (!btn || !myId) return;
+    if (!btn) return;
+    if (!myId) { promptLogin(); return; }
     const ruleId = btn.dataset.rule;
     const delta = parseInt(btn.dataset.delta, 10);
     if (delta > 0) {
@@ -1516,7 +1524,7 @@
   });
 
   $('elimBtn').addEventListener('click', () => {
-    if (!myId) { toast('Velg deg selv først'); return; }
+    if (!myId) { promptLogin(); return; }
     toggleElim(myId);
   });
 
@@ -1555,11 +1563,21 @@
   });
 
   $('modalCancel').addEventListener('click', () => $('modalBg').classList.remove('show'));
-  $('modalOk').addEventListener('click', () => {
+  $('modalOk').addEventListener('click', async () => {
     const name = $('nameInput').value.trim();
     if (!name) { toast('Skriv navn'); return; }
-    createPlayer(name);
-    $('modalBg').classList.remove('show');
+    const btn = $('modalOk');
+    btn.disabled = true;
+    btn.textContent = 'Logger inn...';
+    try {
+      await createPlayer(name);
+      $('modalBg').classList.remove('show');
+    } catch (e) {
+      // toast already shown by createPlayer; keep modal open so user can retry
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Kjør';
+    }
   });
   $('nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('modalOk').click(); });
   $('resetBtn').addEventListener('click', resetMine);
