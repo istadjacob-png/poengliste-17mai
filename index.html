@@ -1418,7 +1418,7 @@
     await setDoc(doc(playersCol, playerId), { eliminated: !p.eliminated, updatedAt: serverTimestamp() }, { merge: true });
   }
 
-  async function createPlayer(name) {
+  function createPlayer(name) {
     if (!db) { toast('Firebase ikke koblet til'); return; }
     const slug = name.toLowerCase().replace(/[^a-z0-9æøå]+/g, '-').replace(/^-|-$/g, '').replace(/æ/g,'ae').replace(/ø/g,'o').replace(/å/g,'a');
     const id = (slug || 'spiller') + '-' + Math.random().toString(36).slice(2,6);
@@ -1430,18 +1430,20 @@
       updatedAt: serverTimestamp(),
     };
     if (myTelegramChatId) data.telegramChatId = myTelegramChatId;
-    try {
-      await setDoc(doc(playersCol, id), data);
-      players[id] = { id, ...data };
-      myId = id;
-      localStorage.setItem('myId', id);
-      render();
-      toast(`Logget inn som ${name.trim()}`);
-    } catch (e) {
+    players[id] = { id, name: name.trim(), scores: {}, eliminated: false };
+    myId = id;
+    localStorage.setItem('myId', id);
+    render();
+    setDoc(doc(playersCol, id), data).catch(e => {
       console.error('createPlayer failed', e);
+      delete players[id];
+      if (myId === id) {
+        myId = null;
+        localStorage.removeItem('myId');
+      }
+      render();
       toast('Klarte ikke logge inn: ' + (e?.code || e?.message || 'ukjent feil'), true);
-      throw e;
-    }
+    });
   }
 
   async function resetMine() {
@@ -1563,21 +1565,11 @@
   });
 
   $('modalCancel').addEventListener('click', () => $('modalBg').classList.remove('show'));
-  $('modalOk').addEventListener('click', async () => {
+  $('modalOk').addEventListener('click', () => {
     const name = $('nameInput').value.trim();
     if (!name) { toast('Skriv navn'); return; }
-    const btn = $('modalOk');
-    btn.disabled = true;
-    btn.textContent = 'Logger inn...';
-    try {
-      await createPlayer(name);
-      $('modalBg').classList.remove('show');
-    } catch (e) {
-      // toast already shown by createPlayer; keep modal open so user can retry
-    } finally {
-      btn.disabled = false;
-      btn.textContent = 'Kjør';
-    }
+    $('modalBg').classList.remove('show');
+    createPlayer(name);
   });
   $('nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('modalOk').click(); });
   $('resetBtn').addEventListener('click', resetMine);
