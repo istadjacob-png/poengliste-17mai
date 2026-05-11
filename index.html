@@ -1452,16 +1452,16 @@
         <div class="ctrl">
           <button data-rule="${r.id}" data-delta="-1" ${!me||c<=0?'disabled':''}>−</button>
           <span class="count">${c}</span>
-          <button class="plus" data-rule="${r.id}" data-delta="1">+</button>
+          <button class="plus" data-rule="${r.id}" data-delta="1" ${!me?'disabled':''}>+</button>
         </div>
       </div>`;
     }).join('');
 
     const ab = $('anmeldBtn');
-    if (ab) ab.disabled = false;
+    if (ab) ab.disabled = !me;
 
     const eb = $('elimBtn');
-    eb.disabled = false;
+    eb.disabled = !me;
     if (me?.eliminated) {
       eb.textContent = 'Du er eliminert. Trykk for å angre.';
       eb.classList.add('is-elim');
@@ -1613,8 +1613,7 @@
 
   $('rulesList').addEventListener('click', e => {
     const btn = e.target.closest('button[data-rule]');
-    if (!btn) return;
-    if (!myId) { promptLogin(); return; }
+    if (!btn || !myId) return;
     const ruleId = btn.dataset.rule;
     const delta = parseInt(btn.dataset.delta, 10);
     if (delta > 0) {
