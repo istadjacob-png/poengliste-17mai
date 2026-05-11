@@ -613,7 +613,7 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
-  import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, deleteDoc, addDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
+  import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, deleteDoc, addDoc, writeBatch, runTransaction } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 
   // ============ TELEGRAM CONFIG ============
   // Lim inn bot-token fra @BotFather. Tom string = ingen Telegram-varsler.
@@ -667,12 +667,15 @@
   let players = {};
   let rules = DEFAULT_RULES.slice();
   let verifs = [];
+  let downvotes = [];
   let myId = localStorage.getItem('myId') || null;
-  let db = null, playersCol = null, verifsCol = null;
+  let db = null, playersCol = null, verifsCol = null, downvotesCol = null;
   let didSeed = false;
   let editingIdx = -1;
   let pickerRuleId = null;
   let isFirstVerifSnap = true;
+  let isFirstDownvoteSnap = true;
+  let downvoteTargetSel = null;
   const ORIGINAL_TITLE = 'Poengliste 17. mai';
 
   if (configured) {
@@ -680,6 +683,25 @@
     db = getFirestore(app);
     playersCol = collection(db, 'poengliste-2026');
     verifsCol = collection(db, 'verifications-2026');
+    downvotesCol = collection(db, 'downvotes-2026');
+    onSnapshot(downvotesCol, (snap) => {
+      snap.docChanges().forEach(change => {
+        const d = { id: change.doc.id, ...change.doc.data() };
+        if (change.type === 'added' && !isFirstDownvoteSnap && d.status === 'pending') {
+          const eligible = d.initiatorId !== myId && d.targetId !== myId &&
+            !(d.yesVoters || []).includes(myId) && !(d.noVoters || []).includes(myId);
+          if (eligible) notifyNewDownvote(d);
+        }
+        if (change.type === 'modified' && d.status === 'applied') {
+          if (d.targetId === myId) toast(`❌ Du fikk ${fmt(d.pts)}p for "${d.ruleName}"`);
+          else if (d.initiatorId === myId) toast(`Avstemningen ble vedtatt`);
+        }
+      });
+      isFirstDownvoteSnap = false;
+      downvotes = [];
+      snap.forEach(d => downvotes.push({ id: d.id, ...d.data() }));
+      render();
+    });
     onSnapshot(verifsCol, (snap) => {
       snap.docChanges().forEach(change => {
         const v = { id: change.doc.id, ...change.doc.data() };
