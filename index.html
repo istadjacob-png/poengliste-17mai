@@ -217,6 +217,29 @@
   .elim-btn.is-elim { background: var(--rod); border-color: var(--rod); color: #fff; }
   .elim-btn:disabled { opacity: 0.5; }
 
+  .anmeld-btn {
+    width: 100%;
+    background: var(--card);
+    color: var(--rod);
+    border: 2px solid var(--rod);
+    border-radius: 14px;
+    padding: 14px;
+    font-family: 'Bebas Neue';
+    font-size: 20px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    margin-top: 10px;
+  }
+  .anmeld-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .pending-card.downvote { border-color: var(--rod); }
+  .pending-card.downvote .pending-detail strong { color: var(--rod); }
+  .pending-actions .vote-yes { background: var(--rod); color: #fff; }
+  .pending-actions .vote-no { background: var(--card2); color: var(--rod); border: 1px solid var(--rod); }
+  .dv-progress { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .dv-progress strong { color: var(--tekst); }
+  .my-pending-row.downvote .mp-name { color: var(--rod); }
+
   .leaderboard { background: var(--card); border-radius: 16px; padding: 6px 12px; margin-top: 8px; }
   .lb-row { display: flex; align-items: center; gap: 10px; padding: 12px 4px; border-bottom: 1px solid #222; }
   .lb-row:last-child { border-bottom: none; }
@@ -342,6 +365,7 @@
     justify-content: space-between;
   }
   .witness-row::after { content: '→'; color: var(--muted); font-size: 18px; }
+  .witness-row.no-arrow::after { content: none; }
 
   .modal-sub { color: var(--muted); font-size: 14px; margin: 0 0 14px; line-height: 1.4; }
   .modal-sub strong { color: var(--tekst); }
@@ -503,6 +527,8 @@
     <div id="myPendingList"></div>
   </div>
 
+  <button class="anmeld-btn" id="anmeldBtn">🚨 Anmeld noen for noe stygt</button>
+
   <button class="elim-btn" id="elimBtn">Catche klamma / aids / skabb / herpes</button>
 
   <h2 class="section-title">Leaderboard</h2>
@@ -609,6 +635,18 @@
   </div>
 </div>
 
+<div class="modal-bg" id="downvoteBg">
+  <div class="modal modal-wide">
+    <h3 id="downvoteTitle">Anmeld noen</h3>
+    <p id="downvoteSub" class="modal-sub">Velg hvem du vil anmelde. 3 andre må stemme ja før poenget gis.</p>
+    <div class="scroll-body" id="downvoteList"></div>
+    <div class="footer-row">
+      <button class="btn btn-ghost" id="downvoteBack" style="flex:1; display:none;">← Tilbake</button>
+      <button class="btn btn-ghost" id="downvoteCancel" style="flex:1">Avbryt</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script type="module">
@@ -656,6 +694,7 @@
 
   const RULES_VERSION = 2;
   const RULES_DOC_ID = '__rules__';
+  const DOWNVOTE_THRESHOLD = 3;
 
   if (location.hash === '#admin') {
     localStorage.setItem('adminMode', '1');
@@ -784,6 +823,27 @@
   function pendingForMe() { return verifs.filter(v => v.status === 'pending' && v.witnessId === myId); }
   function pendingByMe() { return verifs.filter(v => v.status === 'pending' && v.claimerId === myId); }
 
+  function pendingDownvotesForMe() {
+    if (!myId) return [];
+    return downvotes.filter(d =>
+      d.status === 'pending' &&
+      d.initiatorId !== myId &&
+      d.targetId !== myId &&
+      !(d.yesVoters || []).includes(myId) &&
+      !(d.noVoters || []).includes(myId)
+    );
+  }
+  function pendingDownvotesByMe() {
+    if (!myId) return [];
+    return downvotes.filter(d => d.status === 'pending' && d.initiatorId === myId);
+  }
+  function eligibleVoterCount(excludeTargetId) {
+    return Object.values(players).filter(p => p.id !== myId && p.id !== excludeTargetId).length;
+  }
+  function downvoteThresholdFor(d) {
+    return Math.min(DOWNVOTE_THRESHOLD, Number(d.threshold) || DOWNVOTE_THRESHOLD);
+  }
+
   async function sendTelegramNotif(chatId, text) {
     if (!TELEGRAM_BOT_TOKEN || !chatId) return;
     try {
@@ -835,7 +895,9 @@
   }
 
   function updateTitle() {
-    const count = (myId ? pendingForMe() : []).length;
+    const verifs = (myId ? pendingForMe() : []).length;
+    const dv = pendingDownvotesForMe().length;
+    const count = verifs + dv;
     document.title = count > 0 ? `(${count}) ${ORIGINAL_TITLE}` : ORIGINAL_TITLE;
   }
 
@@ -853,12 +915,14 @@
     const btn = $('inboxBtn');
     const badge = $('inboxBadge');
     const forMe = myId ? pendingForMe() : [];
+    const dvForMe = pendingDownvotesForMe();
+    const total = forMe.length + dvForMe.length;
     if (!myId) {
       btn.style.display = 'none';
     } else {
       btn.style.display = '';
-      if (forMe.length > 0) {
-        badge.textContent = forMe.length;
+      if (total > 0) {
+        badge.textContent = total;
         badge.style.display = '';
         btn.classList.add('has-pending');
       } else {
@@ -872,11 +936,12 @@
   function renderInboxBody() {
     const body = $('inboxBody');
     const forMe = myId ? pendingForMe() : [];
-    if (forMe.length === 0) {
+    const dvForMe = pendingDownvotesForMe();
+    if (forMe.length === 0 && dvForMe.length === 0) {
       body.innerHTML = '<div style="text-align:center;color:#888;padding:30px 14px;">Ingen forespørsler akkurat nå.</div>';
       return;
     }
-    body.innerHTML = forMe.map(v => `
+    const verifHtml = forMe.map(v => `
       <div class="pending-card">
         <div class="pending-row">
           <div class="pending-emoji">${v.ruleEmoji || '•'}</div>
@@ -891,6 +956,28 @@
         </div>
       </div>
     `).join('');
+    const dvHtml = dvForMe.map(d => {
+      const threshold = downvoteThresholdFor(d);
+      const yes = (d.yesVoters || []).length;
+      const no = (d.noVoters || []).length;
+      return `
+      <div class="pending-card downvote">
+        <div class="pending-row">
+          <div class="pending-emoji">${d.ruleEmoji || '•'}</div>
+          <div class="pending-text">
+            <div class="pending-claimer">${escapeHtml(d.initiatorName)} anmelder ${escapeHtml(d.targetName)}</div>
+            <div class="pending-detail">for "${escapeHtml(d.ruleName)}" — <strong>${fmt(d.pts)}p</strong></div>
+            <div class="dv-progress">Stemmer: <strong>${yes}</strong> ja, ${no} nei (av ${threshold} ja som trengs)</div>
+          </div>
+        </div>
+        <div class="pending-actions">
+          <button class="vote-yes" data-dv="${d.id}">Stem ja</button>
+          <button class="vote-no" data-dv="${d.id}">Stem nei</button>
+        </div>
+      </div>
+    `;
+    }).join('');
+    body.innerHTML = dvHtml + verifHtml;
   }
 
   function openInbox() {
@@ -904,11 +991,12 @@
     const mpSection = $('myPendingSection');
     const mpList = $('myPendingList');
     const byMe = myId ? pendingByMe() : [];
-    if (byMe.length === 0) {
+    const dvByMe = pendingDownvotesByMe();
+    if (byMe.length === 0 && dvByMe.length === 0) {
       mpSection.style.display = 'none';
     } else {
       mpSection.style.display = '';
-      mpList.innerHTML = byMe.map(v => `
+      const verifRows = byMe.map(v => `
         <div class="my-pending-row">
           <div class="mp-emoji">${v.ruleEmoji || '•'}</div>
           <div class="mp-text">
@@ -918,6 +1006,21 @@
           <button data-id="${v.id}">Trekk tilbake</button>
         </div>
       `).join('');
+      const dvRows = dvByMe.map(d => {
+        const threshold = downvoteThresholdFor(d);
+        const yes = (d.yesVoters || []).length;
+        return `
+        <div class="my-pending-row downvote">
+          <div class="mp-emoji">${d.ruleEmoji || '•'}</div>
+          <div class="mp-text">
+            <div class="mp-name">${fmt(d.pts)}p · ${escapeHtml(d.ruleName)} → ${escapeHtml(d.targetName)}</div>
+            <div class="mp-witness">${yes} av ${threshold} ja</div>
+          </div>
+          <button data-dv="${d.id}">Trekk tilbake</button>
+        </div>
+      `;
+      }).join('');
+      mpList.innerHTML = dvRows + verifRows;
     }
   }
 
@@ -970,6 +1073,149 @@
     if (!confirm('Trekke tilbake forespørselen?')) return;
     await deleteDoc(doc(verifsCol, id));
     toast('Trukket tilbake');
+  }
+
+  async function createDownvote(targetId, ruleId) {
+    if (!db || !myId || !downvotesCol) return;
+    const me = players[myId];
+    const target = players[targetId];
+    const rule = rules.find(r => r.id === ruleId);
+    if (!me || !target || !rule) return;
+    if (targetId === myId) { toast('Du kan ikke anmelde deg selv'); return; }
+    if (rule.pts >= 0) { toast('Bare negative regler kan anmeldes'); return; }
+    const eligible = eligibleVoterCount(targetId);
+    if (eligible < 2) { toast('Trenger minst 2 andre spillere for å starte avstemning'); return; }
+    const threshold = Math.min(DOWNVOTE_THRESHOLD, eligible);
+    await addDoc(downvotesCol, {
+      initiatorId: myId,
+      initiatorName: me.name,
+      targetId,
+      targetName: target.name,
+      ruleId,
+      ruleName: rule.name,
+      ruleEmoji: rule.emoji || '•',
+      pts: Number(rule.pts) || 0,
+      threshold,
+      yesVoters: [],
+      noVoters: [],
+      status: 'pending',
+      createdAt: serverTimestamp(),
+    });
+    toast(`Anmeldelse sendt — trenger ${threshold} ja`);
+    Object.values(players).forEach(p => {
+      if (p.id === myId || p.id === targetId) return;
+      if (p.telegramChatId) {
+        sendTelegramNotif(p.telegramChatId,
+          `🚨 ${me.name} anmelder ${target.name}\n"${rule.name}" (${fmt(Number(rule.pts) || 0)}p)\nStem ja/nei: ${APP_URL}`);
+      }
+    });
+  }
+
+  async function voteDownvote(id, vote) {
+    if (!db || !myId || !downvotesCol) return;
+    const ref = doc(downvotesCol, id);
+    try {
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists()) throw new Error('Avstemning finnes ikke');
+        const d = snap.data();
+        if (d.status !== 'pending') throw new Error('Avstemning er allerede ferdig');
+        if (d.initiatorId === myId || d.targetId === myId) throw new Error('Du kan ikke stemme her');
+        const yes = Array.isArray(d.yesVoters) ? d.yesVoters.slice() : [];
+        const no = Array.isArray(d.noVoters) ? d.noVoters.slice() : [];
+        if (yes.includes(myId) || no.includes(myId)) throw new Error('Du har allerede stemt');
+        if (vote === 'yes') yes.push(myId); else no.push(myId);
+        const threshold = Number(d.threshold) || DOWNVOTE_THRESHOLD;
+        const update = { yesVoters: yes, noVoters: no };
+        if (yes.length >= threshold) {
+          const targetRef = doc(playersCol, d.targetId);
+          const targetSnap = await tx.get(targetRef);
+          const targetData = targetSnap.exists() ? targetSnap.data() : {};
+          const curScores = targetData.scores || {};
+          const newScores = { ...curScores, [d.ruleId]: (curScores[d.ruleId] || 0) + 1 };
+          tx.set(targetRef, { scores: newScores, updatedAt: serverTimestamp() }, { merge: true });
+          update.status = 'applied';
+          update.resolvedAt = serverTimestamp();
+        }
+        tx.update(ref, update);
+      });
+      toast(vote === 'yes' ? 'Stemte ja' : 'Stemte nei');
+    } catch (e) {
+      toast(e.message || 'Klarte ikke stemme');
+    }
+  }
+
+  async function cancelDownvote(id) {
+    if (!db || !downvotesCol) return;
+    if (!confirm('Trekke tilbake anmeldelsen?')) return;
+    await deleteDoc(doc(downvotesCol, id));
+    toast('Trukket tilbake');
+  }
+
+  function notifyNewDownvote(d) {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try {
+        const n = new Notification(`${d.initiatorName} anmelder ${d.targetName}`, {
+          body: `${d.ruleEmoji || '•'} "${d.ruleName}" (${fmt(d.pts)}p) — stem ja/nei`,
+          icon: 'icon-192.png',
+          tag: `downvote-${d.id}`,
+        });
+        n.onclick = () => { window.focus(); n.close(); };
+      } catch (e) {}
+    }
+    playBeep();
+    if (navigator.vibrate) { try { navigator.vibrate([200, 100, 200]); } catch (e) {} }
+    toast(`Ny anmeldelse: ${d.initiatorName} → ${d.targetName}`);
+  }
+
+  function openDownvoteModal() {
+    if (!myId) { toast('Velg deg selv først'); return; }
+    const eligible = eligibleVoterCount(null) - 1;
+    if (eligible < 2) { toast('Trenger minst 2 andre spillere som kan stemme'); return; }
+    downvoteTargetSel = null;
+    renderDownvoteStep();
+    $('downvoteBg').classList.add('show');
+  }
+
+  function closeDownvoteModal() {
+    $('downvoteBg').classList.remove('show');
+    downvoteTargetSel = null;
+  }
+
+  function renderDownvoteStep() {
+    const list = $('downvoteList');
+    const sub = $('downvoteSub');
+    const title = $('downvoteTitle');
+    const back = $('downvoteBack');
+    if (!downvoteTargetSel) {
+      title.textContent = 'Anmeld noen';
+      sub.textContent = `Velg hvem du vil anmelde. ${DOWNVOTE_THRESHOLD} andre må stemme ja før poenget gis.`;
+      back.style.display = 'none';
+      const others = Object.values(players).filter(p => p.id !== myId && !p.eliminated);
+      if (others.length === 0) {
+        list.innerHTML = '<div style="text-align:center;color:#888;padding:20px;">Ingen andre spillere ennå.</div>';
+      } else {
+        list.innerHTML = others.sort((a,b) => a.name.localeCompare(b.name, 'no')).map(p =>
+          `<button class="witness-row" data-dv-target="${p.id}">${escapeHtml(p.name)}</button>`
+        ).join('');
+      }
+    } else {
+      const target = players[downvoteTargetSel];
+      title.textContent = 'Hva gjorde de?';
+      sub.innerHTML = `Anmelder <strong>${escapeHtml(target?.name || '')}</strong> for:`;
+      back.style.display = '';
+      const negRules = rules.filter(r => r.pts < 0);
+      if (negRules.length === 0) {
+        list.innerHTML = '<div style="text-align:center;color:#888;padding:20px;">Ingen negative regler å bruke.</div>';
+      } else {
+        list.innerHTML = negRules.map(r =>
+          `<button class="witness-row no-arrow" data-dv-rule="${r.id}">
+            <span>${r.emoji || '•'} ${escapeHtml(r.name)}</span>
+            <span style="color: var(--rod); font-weight: 800;">${fmt(r.pts)}p</span>
+          </button>`
+        ).join('');
+      }
+    }
   }
 
   function openWitnessPicker(ruleId) {
@@ -1101,6 +1347,9 @@
       </div>`;
     }).join('');
 
+    const ab = $('anmeldBtn');
+    if (ab) ab.disabled = !me;
+
     const eb = $('elimBtn');
     eb.disabled = !me;
     if (me?.eliminated) {
@@ -1209,6 +1458,13 @@
   $('inboxBtn').addEventListener('click', openInbox);
   $('inboxClose').addEventListener('click', () => $('inboxBg').classList.remove('show'));
   $('inboxBody').addEventListener('click', e => {
+    const dvBtn = e.target.closest('button[data-dv]');
+    if (dvBtn) {
+      const id = dvBtn.dataset.dv;
+      if (dvBtn.classList.contains('vote-yes')) voteDownvote(id, 'yes');
+      else if (dvBtn.classList.contains('vote-no')) voteDownvote(id, 'no');
+      return;
+    }
     const btn = e.target.closest('button[data-id]');
     if (!btn) return;
     const id = btn.dataset.id;
@@ -1217,9 +1473,30 @@
   });
 
   $('myPendingList').addEventListener('click', e => {
+    const dvBtn = e.target.closest('button[data-dv]');
+    if (dvBtn) { cancelDownvote(dvBtn.dataset.dv); return; }
     const btn = e.target.closest('button[data-id]');
     if (!btn) return;
     cancelVerif(btn.dataset.id);
+  });
+
+  $('anmeldBtn').addEventListener('click', openDownvoteModal);
+  $('downvoteCancel').addEventListener('click', closeDownvoteModal);
+  $('downvoteBack').addEventListener('click', () => { downvoteTargetSel = null; renderDownvoteStep(); });
+  $('downvoteList').addEventListener('click', e => {
+    const targetBtn = e.target.closest('button[data-dv-target]');
+    if (targetBtn) {
+      downvoteTargetSel = targetBtn.dataset.dvTarget;
+      renderDownvoteStep();
+      return;
+    }
+    const ruleBtn = e.target.closest('button[data-dv-rule]');
+    if (ruleBtn && downvoteTargetSel) {
+      const ruleId = ruleBtn.dataset.dvRule;
+      const targetId = downvoteTargetSel;
+      closeDownvoteModal();
+      createDownvote(targetId, ruleId);
+    }
   });
 
   $('witnessCancel').addEventListener('click', closeWitnessPicker);
