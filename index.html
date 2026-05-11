@@ -366,6 +366,8 @@
   }
   .witness-row::after { content: '→'; color: var(--muted); font-size: 18px; }
   .witness-row.no-arrow::after { content: none; }
+  .witness-row.multi.selected { background: var(--card); border-color: var(--gul); color: var(--gul); }
+  .witness-row .ws-check { display: inline-block; width: 22px; text-align: center; margin-right: 6px; color: var(--gul); font-weight: 800; }
 
   .modal-sub { color: var(--muted); font-size: 14px; margin: 0 0 14px; line-height: 1.4; }
   .modal-sub strong { color: var(--tekst); }
@@ -495,7 +497,7 @@
   </div>
 
   <div class="player-bar" id="loginBar">
-    <button class="btn" id="newPlayerBtn" style="flex:1;">Lag deg som spiller</button>
+    <button class="btn" id="newPlayerBtn" style="flex:1;">Logg inn / lag bruker</button>
   </div>
 
   <div class="player-bar" id="meBar" style="display:none;">
@@ -542,9 +544,10 @@
 
 <div class="modal-bg" id="modalBg">
   <div class="modal">
-    <h3>Hvem er du?</h3>
-    <p>Skriv navnet ditt. Alle ser hverandres score.</p>
+    <h3>Logg inn</h3>
+    <p>Skriv navn og 4-sifret PIN. Hvis navnet er nytt lages bruker. Hvis det finnes fra før må PIN stemme.</p>
     <input id="nameInput" class="name-input" placeholder="Navn" maxlength="20" autocomplete="off">
+    <input id="pinInput" class="name-input" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="4-sifret PIN" maxlength="4" autocomplete="off" style="margin-top:8px; letter-spacing: 4px; text-align: center;">
     <div class="row">
       <button class="btn btn-ghost" id="modalCancel" style="flex:1">Avbryt</button>
       <button class="btn" id="modalOk" style="flex:1">Kjør</button>
@@ -631,6 +634,7 @@
     <div class="scroll-body" id="witnessList"></div>
     <div class="footer-row">
       <button class="btn btn-ghost" id="witnessCancel" style="flex:1">Avbryt</button>
+      <button class="btn" id="witnessConfirm" style="flex:1; display:none;" disabled>Send (0/2)</button>
     </div>
   </div>
 </div>
@@ -712,6 +716,8 @@
   let didSeed = false;
   let editingIdx = -1;
   let pickerRuleId = null;
+  let pickerRequired = 1;
+  let witnessSelected = new Set();
   let isFirstVerifSnap = true;
   let isFirstDownvoteSnap = true;
   let downvoteTargetSel = null;
@@ -747,12 +753,13 @@
     onSnapshot(verifsCol, (snap) => {
       snap.docChanges().forEach(change => {
         const v = { id: change.doc.id, ...change.doc.data() };
-        if (change.type === 'added' && !isFirstVerifSnap && v.status === 'pending' && v.witnessId === myId) {
-          notifyNewRequest(v);
+        if (change.type === 'added' && !isFirstVerifSnap && v.status === 'pending') {
+          const witnessIds = Array.isArray(v.witnessIds) ? v.witnessIds : (v.witnessId ? [v.witnessId] : []);
+          if (witnessIds.includes(myId)) notifyNewRequest(v);
         }
         if (change.type === 'modified' && v.status !== 'pending' && v.claimerId === myId) {
-          if (v.status === 'approved') toast(`${v.witnessName} godkjente +${fmt(v.pts)}p for "${v.ruleName}"`);
-          else if (v.status === 'denied') toast(`${v.witnessName} avviste "${v.ruleName}"`);
+          if (v.status === 'approved') toast(`✅ +${fmt(v.pts)}p for "${v.ruleName}" godkjent`);
+          else if (v.status === 'denied') toast(`❌ "${v.ruleName}" ble avvist`);
         }
       });
       isFirstVerifSnap = false;
@@ -823,7 +830,25 @@
   }
   function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-  function pendingForMe() { return verifs.filter(v => v.status === 'pending' && v.witnessId === myId); }
+  function witnessesRequired(pts) { return Math.abs(Number(pts) || 0) >= 20 ? 2 : 1; }
+  function verifWitnessIds(v) {
+    if (Array.isArray(v.witnessIds)) return v.witnessIds;
+    if (v.witnessId) return [v.witnessId];
+    return [];
+  }
+  function verifApprovers(v) { return Array.isArray(v.approvedBy) ? v.approvedBy : []; }
+  function verifDeniers(v) { return Array.isArray(v.deniedBy) ? v.deniedBy : []; }
+  function verifRequired(v) { return Number(v.witnessesRequired) || 1; }
+
+  function pendingForMe() {
+    if (!myId) return [];
+    return verifs.filter(v =>
+      v.status === 'pending' &&
+      verifWitnessIds(v).includes(myId) &&
+      !verifApprovers(v).includes(myId) &&
+      !verifDeniers(v).includes(myId)
+    );
+  }
   function pendingByMe() { return verifs.filter(v => v.status === 'pending' && v.claimerId === myId); }
 
   function pendingDownvotesForMe() {
@@ -944,13 +969,18 @@
       body.innerHTML = '<div style="text-align:center;color:#888;padding:30px 14px;">Ingen forespørsler akkurat nå.</div>';
       return;
     }
-    const verifHtml = forMe.map(v => `
+    const verifHtml = forMe.map(v => {
+      const required = verifRequired(v);
+      const approved = verifApprovers(v).length;
+      const progress = required > 1 ? `<div class="dv-progress">Vitne ${approved + 1} av ${required}</div>` : '';
+      return `
       <div class="pending-card">
         <div class="pending-row">
           <div class="pending-emoji">${v.ruleEmoji || '•'}</div>
           <div class="pending-text">
             <div class="pending-claimer">${escapeHtml(v.claimerName)}</div>
             <div class="pending-detail">vil ha <strong>+${fmt(v.pts)}p</strong> for "${escapeHtml(v.ruleName)}"</div>
+            ${progress}
           </div>
         </div>
         <div class="pending-actions">
@@ -958,7 +988,8 @@
           <button class="deny" data-id="${v.id}">Avvis</button>
         </div>
       </div>
-    `).join('');
+    `;
+    }).join('');
     const dvHtml = dvForMe.map(d => {
       const threshold = downvoteThresholdFor(d);
       const yes = (d.yesVoters || []).length;
@@ -999,16 +1030,24 @@
       mpSection.style.display = 'none';
     } else {
       mpSection.style.display = '';
-      const verifRows = byMe.map(v => `
+      const verifRows = byMe.map(v => {
+        const required = verifRequired(v);
+        const approved = verifApprovers(v).length;
+        const names = Array.isArray(v.witnessNames) ? v.witnessNames.join(' og ') : (v.witnessName || '');
+        const statusText = required > 1
+          ? `${approved} av ${required} har godkjent · ${escapeHtml(names)}`
+          : `venter på ${escapeHtml(names)}`;
+        return `
         <div class="my-pending-row">
           <div class="mp-emoji">${v.ruleEmoji || '•'}</div>
           <div class="mp-text">
             <div class="mp-name">+${fmt(v.pts)}p · ${escapeHtml(v.ruleName)}</div>
-            <div class="mp-witness">venter på ${escapeHtml(v.witnessName)}</div>
+            <div class="mp-witness">${statusText}</div>
           </div>
           <button data-id="${v.id}">Trekk tilbake</button>
         </div>
-      `).join('');
+      `;
+      }).join('');
       const dvRows = dvByMe.map(d => {
         const threshold = downvoteThresholdFor(d);
         const yes = (d.yesVoters || []).length;
@@ -1027,17 +1066,23 @@
     }
   }
 
-  async function createVerif(witnessId, ruleId) {
+  async function createVerif(witnessIds, ruleId) {
     if (!db || !myId || !verifsCol) return;
     const me = players[myId];
-    const witness = players[witnessId];
     const rule = rules.find(r => r.id === ruleId);
-    if (!me || !witness || !rule) return;
+    if (!me || !rule) return;
+    const ids = Array.isArray(witnessIds) ? witnessIds : [witnessIds];
+    const witnesses = ids.map(id => players[id]).filter(Boolean);
+    if (witnesses.length === 0) return;
+    const required = witnessesRequired(rule.pts);
     await addDoc(verifsCol, {
       claimerId: myId,
       claimerName: me.name,
-      witnessId,
-      witnessName: witness.name,
+      witnessIds: witnesses.map(w => w.id),
+      witnessNames: witnesses.map(w => w.name),
+      witnessesRequired: required,
+      approvedBy: [],
+      deniedBy: [],
       ruleId,
       ruleName: rule.name,
       ruleEmoji: rule.emoji || '•',
@@ -1045,30 +1090,71 @@
       status: 'pending',
       createdAt: serverTimestamp(),
     });
-    toast(`Sendt til ${witness.name}`);
-    if (witness.telegramChatId) {
-      sendTelegramNotif(witness.telegramChatId,
-        `🔔 ${me.name} ber deg verifisere\n+${fmt(Number(rule.pts) || 0)}p for "${rule.name}"\n\nÅpne: ${APP_URL}`);
-    }
+    const names = witnesses.map(w => w.name).join(' og ');
+    toast(`Sendt til ${names}`);
+    witnesses.forEach(w => {
+      if (w.telegramChatId) {
+        sendTelegramNotif(w.telegramChatId,
+          `🔔 ${me.name} ber deg verifisere\n+${fmt(Number(rule.pts) || 0)}p for "${rule.name}"\n\nÅpne: ${APP_URL}`);
+      }
+    });
   }
 
   async function approveVerif(id) {
-    if (!db || !verifsCol) return;
-    const v = verifs.find(x => x.id === id);
-    if (!v || v.status !== 'pending') return;
-    const claimer = players[v.claimerId];
-    const newScores = { ...(claimer?.scores || {}), [v.ruleId]: (claimer?.scores?.[v.ruleId] || 0) + 1 };
-    const batch = writeBatch(db);
-    batch.update(doc(verifsCol, id), { status: 'approved', resolvedAt: serverTimestamp() });
-    batch.set(doc(playersCol, v.claimerId), { scores: newScores, updatedAt: serverTimestamp() }, { merge: true });
-    await batch.commit();
-    toast('Godkjent');
+    if (!db || !verifsCol || !myId) return;
+    const ref = doc(verifsCol, id);
+    try {
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists()) throw new Error('Forespørselen finnes ikke');
+        const v = snap.data();
+        if (v.status !== 'pending') throw new Error('Allerede ferdig');
+        const witnessIds = Array.isArray(v.witnessIds) ? v.witnessIds : (v.witnessId ? [v.witnessId] : []);
+        if (!witnessIds.includes(myId)) throw new Error('Du er ikke vitne her');
+        const approved = Array.isArray(v.approvedBy) ? v.approvedBy.slice() : [];
+        const denied = Array.isArray(v.deniedBy) ? v.deniedBy.slice() : [];
+        if (approved.includes(myId) || denied.includes(myId)) throw new Error('Du har allerede svart');
+        approved.push(myId);
+        const required = Number(v.witnessesRequired) || 1;
+        const update = { approvedBy: approved, deniedBy: denied };
+        if (approved.length >= required) {
+          const claimerRef = doc(playersCol, v.claimerId);
+          const claimerSnap = await tx.get(claimerRef);
+          const claimerData = claimerSnap.exists() ? claimerSnap.data() : {};
+          const curScores = claimerData.scores || {};
+          const newScores = { ...curScores, [v.ruleId]: (curScores[v.ruleId] || 0) + 1 };
+          tx.set(claimerRef, { scores: newScores, updatedAt: serverTimestamp() }, { merge: true });
+          update.status = 'approved';
+          update.resolvedAt = serverTimestamp();
+        }
+        tx.update(ref, update);
+      });
+      toast('Godkjent');
+    } catch (e) {
+      toast(e.message || 'Klarte ikke godkjenne');
+    }
   }
 
   async function denyVerif(id) {
-    if (!db || !verifsCol) return;
-    await setDoc(doc(verifsCol, id), { status: 'denied', resolvedAt: serverTimestamp() }, { merge: true });
-    toast('Avvist');
+    if (!db || !verifsCol || !myId) return;
+    const ref = doc(verifsCol, id);
+    try {
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists()) throw new Error('Forespørselen finnes ikke');
+        const v = snap.data();
+        if (v.status !== 'pending') throw new Error('Allerede ferdig');
+        const witnessIds = Array.isArray(v.witnessIds) ? v.witnessIds : (v.witnessId ? [v.witnessId] : []);
+        if (!witnessIds.includes(myId)) throw new Error('Du er ikke vitne her');
+        const denied = Array.isArray(v.deniedBy) ? v.deniedBy.slice() : [];
+        if (denied.includes(myId)) throw new Error('Du har allerede avvist');
+        denied.push(myId);
+        tx.update(ref, { deniedBy: denied, status: 'denied', resolvedAt: serverTimestamp() });
+      });
+      toast('Avvist');
+    } catch (e) {
+      toast(e.message || 'Klarte ikke avvise');
+    }
   }
 
   async function cancelVerif(id) {
@@ -1226,22 +1312,43 @@
     const rule = rules.find(r => r.id === ruleId);
     if (!rule) return;
     pickerRuleId = ruleId;
-    $('witnessSub').innerHTML = `${rule.emoji || '•'} <strong>${escapeHtml(rule.name)}</strong> · +${fmt(rule.pts)}p`;
-    const others = Object.values(players).filter(p => p.id !== myId);
+    pickerRequired = witnessesRequired(rule.pts);
+    witnessSelected = new Set();
+    const extra = pickerRequired > 1 ? ` · <span style="color:var(--gul);">velg ${pickerRequired} vitner</span>` : '';
+    $('witnessSub').innerHTML = `${rule.emoji || '•'} <strong>${escapeHtml(rule.name)}</strong> · +${fmt(rule.pts)}p${extra}`;
+    $('witnessConfirm').style.display = pickerRequired > 1 ? '' : 'none';
+    renderWitnessList();
+    $('witnessBg').classList.add('show');
+  }
+
+  function renderWitnessList() {
+    const others = Object.values(players).filter(p => p.id !== myId && p.id !== RULES_DOC_ID);
     const list = $('witnessList');
     if (others.length === 0) {
       list.innerHTML = '<div style="text-align:center;color:#888;padding:20px;">Ingen andre spillere ennå. Få noen til å bli med først.</div>';
     } else {
-      list.innerHTML = others.sort((a,b) => a.name.localeCompare(b.name, 'no')).map(p =>
-        `<button class="witness-row" data-witness="${p.id}">${escapeHtml(p.name)}</button>`
-      ).join('');
+      list.innerHTML = others.sort((a,b) => a.name.localeCompare(b.name, 'no')).map(p => {
+        const selected = witnessSelected.has(p.id);
+        if (pickerRequired > 1) {
+          return `<button class="witness-row multi no-arrow ${selected ? 'selected' : ''}" data-witness="${p.id}">
+            <span><span class="ws-check">${selected ? '✓' : '○'}</span> ${escapeHtml(p.name)}</span>
+          </button>`;
+        }
+        return `<button class="witness-row" data-witness="${p.id}">${escapeHtml(p.name)}</button>`;
+      }).join('');
     }
-    $('witnessBg').classList.add('show');
+    const cb = $('witnessConfirm');
+    if (cb && pickerRequired > 1) {
+      cb.disabled = witnessSelected.size !== pickerRequired;
+      cb.textContent = `Send (${witnessSelected.size}/${pickerRequired})`;
+    }
   }
 
   function closeWitnessPicker() {
     $('witnessBg').classList.remove('show');
     pickerRuleId = null;
+    pickerRequired = 1;
+    witnessSelected = new Set();
   }
 
   function isAdmin() {
@@ -1418,22 +1525,69 @@
     await setDoc(doc(playersCol, playerId), { eliminated: !p.eliminated, updatedAt: serverTimestamp() }, { merge: true });
   }
 
-  function createPlayer(name) {
+  async function hashPin(pin) {
+    const enc = new TextEncoder().encode(String(pin));
+    const buf = await crypto.subtle.digest('SHA-256', enc);
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  function findPlayerByName(name) {
+    const n = name.trim().toLowerCase();
+    return Object.values(players).find(p =>
+      p.id !== RULES_DOC_ID && p.name && p.name.toLowerCase() === n
+    );
+  }
+
+  async function loginOrCreate(name, pin) {
     if (!db) { toast('Firebase ikke koblet til'); return; }
-    const slug = name.toLowerCase().replace(/[^a-z0-9æøå]+/g, '-').replace(/^-|-$/g, '').replace(/æ/g,'ae').replace(/ø/g,'o').replace(/å/g,'a');
+    const trimmed = name.trim();
+    if (!trimmed) { toast('Skriv navn'); return; }
+    if (!/^\d{4}$/.test(pin)) { toast('PIN må være 4 sifre'); return; }
+    const pinHash = await hashPin(pin);
+    const existing = findPlayerByName(trimmed);
+
+    if (existing) {
+      if (existing.pinHash) {
+        if (existing.pinHash !== pinHash) { toast('Feil PIN for ' + existing.name, true); return; }
+        myId = existing.id;
+        localStorage.setItem('myId', existing.id);
+        render();
+        toast(`Velkommen tilbake, ${existing.name}`);
+        if (myTelegramChatId && existing.telegramChatId !== myTelegramChatId) {
+          setDoc(doc(playersCol, existing.id), { telegramChatId: myTelegramChatId, updatedAt: serverTimestamp() }, { merge: true }).catch(() => {});
+        }
+      } else {
+        players[existing.id] = { ...existing, pinHash };
+        myId = existing.id;
+        localStorage.setItem('myId', existing.id);
+        render();
+        toast(`Innlogget som ${existing.name} — PIN satt`);
+        const updates = { pinHash, updatedAt: serverTimestamp() };
+        if (myTelegramChatId) updates.telegramChatId = myTelegramChatId;
+        setDoc(doc(playersCol, existing.id), updates, { merge: true }).catch(e => {
+          console.error('claim failed', e);
+          toast('Klarte ikke lagre PIN: ' + (e?.code || e?.message), true);
+        });
+      }
+      return;
+    }
+
+    const slug = trimmed.toLowerCase().replace(/[^a-z0-9æøå]+/g, '-').replace(/^-|-$/g, '').replace(/æ/g,'ae').replace(/ø/g,'o').replace(/å/g,'a');
     const id = (slug || 'spiller') + '-' + Math.random().toString(36).slice(2,6);
     const data = {
-      name: name.trim(),
+      name: trimmed,
+      pinHash,
       scores: {},
       eliminated: false,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
     if (myTelegramChatId) data.telegramChatId = myTelegramChatId;
-    players[id] = { id, name: name.trim(), scores: {}, eliminated: false };
+    players[id] = { id, name: trimmed, pinHash, scores: {}, eliminated: false };
     myId = id;
     localStorage.setItem('myId', id);
     render();
+    toast(`Velkommen, ${trimmed}`);
     setDoc(doc(playersCol, id), data).catch(e => {
       console.error('createPlayer failed', e);
       delete players[id];
@@ -1521,7 +1675,19 @@
   $('witnessList').addEventListener('click', e => {
     const btn = e.target.closest('button[data-witness]');
     if (!btn || !pickerRuleId) return;
-    createVerif(btn.dataset.witness, pickerRuleId);
+    const id = btn.dataset.witness;
+    if (pickerRequired === 1) {
+      createVerif([id], pickerRuleId);
+      closeWitnessPicker();
+    } else {
+      if (witnessSelected.has(id)) witnessSelected.delete(id);
+      else if (witnessSelected.size < pickerRequired) witnessSelected.add(id);
+      renderWitnessList();
+    }
+  });
+  $('witnessConfirm').addEventListener('click', () => {
+    if (!pickerRuleId || witnessSelected.size !== pickerRequired) return;
+    createVerif(Array.from(witnessSelected), pickerRuleId);
     closeWitnessPicker();
   });
 
@@ -1560,18 +1726,28 @@
 
   $('newPlayerBtn').addEventListener('click', () => {
     $('nameInput').value = '';
+    $('pinInput').value = '';
     $('modalBg').classList.add('show');
     setTimeout(() => $('nameInput').focus(), 50);
   });
 
   $('modalCancel').addEventListener('click', () => $('modalBg').classList.remove('show'));
-  $('modalOk').addEventListener('click', () => {
+  $('modalOk').addEventListener('click', async () => {
     const name = $('nameInput').value.trim();
+    const pin = $('pinInput').value.trim();
     if (!name) { toast('Skriv navn'); return; }
-    $('modalBg').classList.remove('show');
-    createPlayer(name);
+    if (!/^\d{4}$/.test(pin)) { toast('PIN må være 4 sifre'); return; }
+    const btn = $('modalOk');
+    btn.disabled = true;
+    try {
+      await loginOrCreate(name, pin);
+      if (myId) $('modalBg').classList.remove('show');
+    } finally {
+      btn.disabled = false;
+    }
   });
-  $('nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('modalOk').click(); });
+  $('nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('pinInput').focus(); });
+  $('pinInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('modalOk').click(); });
   $('resetBtn').addEventListener('click', resetMine);
 
   // ====== Admin: edit rules list ======
