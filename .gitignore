@@ -3,3 +3,4 @@ _icon.svg
 _icon-maskable.svg
 node_modules/
 *.log
+.gstack/

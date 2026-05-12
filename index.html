@@ -670,12 +670,12 @@
   // ============ FIREBASE CONFIG ============
   // BYTT UT MED DIN EGEN CONFIG. Se README.md for oppskrift.
   const firebaseConfig = {
-    apiKey: "AIzaSyA0XFcyB2aqxFLv0cY20eO8lvC5BxEQeF8",
-    authDomain: "poengliste-17mai.firebaseapp.com",
-    projectId: "poengliste-17mai",
-    storageBucket: "poengliste-17mai.firebasestorage.app",
-    messagingSenderId: "1012007649237",
-    appId: "1:1012007649237:web:8318cd1fe4fe70bf73075c"
+    apiKey: "AIzaSyD8cBJlSucIESwRYruh55u15xX21YEMbyM",
+    authDomain: "poengliste-17mai-jacob.firebaseapp.com",
+    projectId: "poengliste-17mai-jacob",
+    storageBucket: "poengliste-17mai-jacob.firebasestorage.app",
+    messagingSenderId: "941172987533",
+    appId: "1:941172987533:web:dca8398f89afa9e59fb4c4"
   };
   // ==========================================
 
@@ -712,6 +712,28 @@
   let verifs = [];
   let downvotes = [];
   let myId = localStorage.getItem('myId') || null;
+  const CACHED_ME_KEY = 'cachedMe';
+  function cacheMe(p) {
+    if (!p) return;
+    try {
+      localStorage.setItem(CACHED_ME_KEY, JSON.stringify({
+        id: p.id, name: p.name,
+        scores: p.scores || {},
+        eliminated: !!p.eliminated,
+        pinHash: p.pinHash,
+        telegramChatId: p.telegramChatId,
+      }));
+    } catch (e) {}
+  }
+  function restoreCachedMe() {
+    if (!myId) return;
+    try {
+      const cached = localStorage.getItem(CACHED_ME_KEY);
+      if (!cached) return;
+      const p = JSON.parse(cached);
+      if (p && p.id === myId) players[p.id] = p;
+    } catch (e) {}
+  }
   let db = null, playersCol = null, verifsCol = null, downvotesCol = null;
   let didSeed = false;
   let editingIdx = -1;
@@ -722,6 +744,7 @@
   let isFirstDownvoteSnap = true;
   let downvoteTargetSel = null;
   const ORIGINAL_TITLE = 'Poengliste 17. mai';
+  restoreCachedMe();
 
   if (configured) {
     const app = initializeApp(firebaseConfig);
@@ -796,6 +819,7 @@
         didSyncTelegramId = true;
         setDoc(doc(playersCol, myId), { telegramChatId: myTelegramChatId, updatedAt: serverTimestamp() }, { merge: true });
       }
+      if (myId && players[myId]) cacheMe(players[myId]);
       render();
     }, (err) => {
       console.error(err);
