@@ -605,8 +605,8 @@
 
 <div class="modal-bg" id="adminModalBg">
   <div class="modal modal-wide">
-    <h3>Endre regler</h3>
-    <p>Endringer synker live til alle.</p>
+    <h3 id="adminTitle">Regler</h3>
+    <p id="adminSub">Endringer synker live til alle.</p>
     <div class="scroll-body" id="adminRulesBody"></div>
     <div class="footer-row">
       <button class="btn btn-ghost" id="adminClose" style="flex:1">Lukk</button>
@@ -748,6 +748,7 @@
   const RULES_VERSION = 2;
   const RULES_DOC_ID = '__rules__';
   const DOWNVOTE_THRESHOLD = 3;
+  const PROPOSAL_THRESHOLD = 10;
 
   if (location.hash === '#admin') {
     localStorage.setItem('adminMode', '1');
@@ -809,7 +810,9 @@
       if (p && p.id === myId) players[p.id] = p;
     } catch (e) {}
   }
-  let db = null, playersCol = null, verifsCol = null, downvotesCol = null;
+  let proposals = [];
+  let isFirstProposalSnap = true;
+  let db = null, playersCol = null, verifsCol = null, downvotesCol = null, proposalsCol = null;
   let didSeed = false;
   let editingIdx = -1;
   let pickerRuleId = null;
@@ -827,6 +830,30 @@
     playersCol = collection(db, 'poengliste-2026');
     verifsCol = collection(db, 'verifications-2026');
     downvotesCol = collection(db, 'downvotes-2026');
+    proposalsCol = collection(db, 'proposals-2026');
+    onSnapshot(proposalsCol, (snap) => {
+      snap.docChanges().forEach(change => {
+        const p = { id: change.doc.id, ...change.doc.data() };
+        if (change.type === 'added' && !isFirstProposalSnap && p.status === 'pending') {
+          const eligible = p.initiatorId !== myId &&
+            !(p.yesVoters || []).includes(myId) && !(p.noVoters || []).includes(myId);
+          if (eligible) notifyNewProposal(p);
+        }
+        if (change.type === 'modified' && p.status === 'applied') {
+          if (p.initiatorId === myId) toast(`✅ Regelen din "${p.name}" ble vedtatt`);
+          else toast(`✅ Ny regel: "${p.name}"`);
+        }
+        if (change.type === 'modified' && p.status === 'rejected') {
+          if (p.initiatorId === myId) toast(`❌ Regelen "${p.name}" ble avvist`);
+        }
+      });
+      isFirstProposalSnap = false;
+      proposals = [];
+      snap.forEach(d => proposals.push({ id: d.id, ...d.data() }));
+      render();
+    }, (err) => {
+      console.error('proposals snapshot error', err);
+    });
     onSnapshot(downvotesCol, (snap) => {
       snap.docChanges().forEach(change => {
         const d = { id: change.doc.id, ...change.doc.data() };
@@ -971,6 +998,26 @@
     return Math.min(DOWNVOTE_THRESHOLD, Number(d.threshold) || DOWNVOTE_THRESHOLD);
   }
 
+  function pendingProposalsForMe() {
+    if (!myId) return [];
+    return proposals.filter(p =>
+      p.status === 'pending' &&
+      p.initiatorId !== myId &&
+      !(p.yesVoters || []).includes(myId) &&
+      !(p.noVoters || []).includes(myId)
+    );
+  }
+  function pendingProposalsByMe() {
+    if (!myId) return [];
+    return proposals.filter(p => p.status === 'pending' && p.initiatorId === myId);
+  }
+  function proposalThresholdFor(p) {
+    return Number(p.threshold) || PROPOSAL_THRESHOLD;
+  }
+  function totalPlayerCount() {
+    return Object.values(players).filter(p => p.id !== RULES_DOC_ID).length;
+  }
+
   async function sendTelegramNotif(chatId, text) {
     if (!TELEGRAM_BOT_TOKEN || !chatId) return;
     try {
@@ -1043,7 +1090,8 @@
     const badge = $('inboxBadge');
     const forMe = myId ? pendingForMe() : [];
     const dvForMe = pendingDownvotesForMe();
-    const total = forMe.length + dvForMe.length;
+    const propForMe = pendingProposalsForMe();
+    const total = forMe.length + dvForMe.length + propForMe.length;
     if (!myId) {
       btn.style.display = 'none';
     } else {
@@ -1064,7 +1112,8 @@
     const body = $('inboxBody');
     const forMe = myId ? pendingForMe() : [];
     const dvForMe = pendingDownvotesForMe();
-    if (forMe.length === 0 && dvForMe.length === 0) {
+    const propForMe = pendingProposalsForMe();
+    if (forMe.length === 0 && dvForMe.length === 0 && propForMe.length === 0) {
       body.innerHTML = '<div style="text-align:center;color:#888;padding:30px 14px;">Ingen forespørsler akkurat nå.</div>';
       return;
     }
@@ -1110,7 +1159,30 @@
       </div>
     `;
     }).join('');
-    body.innerHTML = dvHtml + verifHtml;
+    const propHtml = propForMe.map(p => {
+      const threshold = proposalThresholdFor(p);
+      const yes = (p.yesVoters || []).length;
+      const no = (p.noVoters || []).length;
+      const noteLine = p.note ? `<div class="pending-detail" style="opacity:0.8;">${escapeHtml(p.note)}</div>` : '';
+      return `
+      <div class="pending-card proposal">
+        <div class="pending-row">
+          <div class="pending-emoji">${p.emoji || '•'}</div>
+          <div class="pending-text">
+            <div class="pending-claimer">${escapeHtml(p.initiatorName)} foreslår ny regel</div>
+            <div class="pending-detail"><strong>${escapeHtml(p.name)}</strong> (${fmt(p.pts)}p)</div>
+            ${noteLine}
+            <div class="dv-progress">Stemmer: <strong>${yes}</strong> ja, ${no} nei (av ${threshold} ja som trengs)</div>
+          </div>
+        </div>
+        <div class="pending-actions">
+          <button class="vote-yes" data-prop="${p.id}">Stem ja</button>
+          <button class="vote-no" data-prop="${p.id}">Stem nei</button>
+        </div>
+      </div>
+    `;
+    }).join('');
+    body.innerHTML = propHtml + dvHtml + verifHtml;
   }
 
   function openInbox() {
@@ -1125,7 +1197,8 @@
     const mpList = $('myPendingList');
     const byMe = myId ? pendingByMe() : [];
     const dvByMe = pendingDownvotesByMe();
-    if (byMe.length === 0 && dvByMe.length === 0) {
+    const propByMe = pendingProposalsByMe();
+    if (byMe.length === 0 && dvByMe.length === 0 && propByMe.length === 0) {
       mpSection.style.display = 'none';
     } else {
       mpSection.style.display = '';
@@ -1161,7 +1234,21 @@
         </div>
       `;
       }).join('');
-      mpList.innerHTML = dvRows + verifRows;
+      const propRows = propByMe.map(p => {
+        const threshold = proposalThresholdFor(p);
+        const yes = (p.yesVoters || []).length;
+        return `
+        <div class="my-pending-row proposal">
+          <div class="mp-emoji">${p.emoji || '•'}</div>
+          <div class="mp-text">
+            <div class="mp-name">Forslag: ${escapeHtml(p.name)} (${fmt(p.pts)}p)</div>
+            <div class="mp-witness">${yes} av ${threshold} ja</div>
+          </div>
+          <button data-prop="${p.id}">Trekk tilbake</button>
+        </div>
+      `;
+      }).join('');
+      mpList.innerHTML = propRows + dvRows + verifRows;
     }
   }
 
@@ -1338,6 +1425,108 @@
     if (!confirm('Trekke tilbake anmeldelsen?')) return;
     await deleteDoc(doc(downvotesCol, id));
     toast('Trukket tilbake');
+  }
+
+  async function createProposal({ emoji, name, pts, note }) {
+    if (!db || !myId || !proposalsCol) return;
+    const me = players[myId];
+    if (!me) return;
+    const trimmedName = String(name || '').trim();
+    const ptsNum = Number(pts);
+    if (!trimmedName) { toast('Skriv navn på regelen'); return; }
+    if (!Number.isFinite(ptsNum)) { toast('Skriv et tall for poeng'); return; }
+    const eligible = totalPlayerCount() - 1;
+    if (eligible < 2) { toast('Trenger minst 2 andre spillere', true); return; }
+    const threshold = Math.min(PROPOSAL_THRESHOLD, eligible);
+    const ruleId = 'r-' + Math.random().toString(36).slice(2, 8);
+    await addDoc(proposalsCol, {
+      initiatorId: myId,
+      initiatorName: me.name,
+      ruleId,
+      emoji: emoji || '•',
+      name: trimmedName,
+      pts: ptsNum,
+      note: (note || '').trim() || null,
+      threshold,
+      yesVoters: [],
+      noVoters: [],
+      status: 'pending',
+      createdAt: serverTimestamp(),
+    });
+    toast(`Forslag sendt — trenger ${threshold} ja`);
+    Object.values(players).forEach(p => {
+      if (p.id === myId || p.id === RULES_DOC_ID) return;
+      if (p.telegramChatId) {
+        sendTelegramNotif(p.telegramChatId,
+          `📜 ${me.name} foreslår ny regel\n${emoji || ''} "${trimmedName}" (${fmt(ptsNum)}p)\nStem ja/nei: ${APP_URL}`);
+      }
+    });
+  }
+
+  async function voteProposal(id, vote) {
+    if (!db || !myId || !proposalsCol) return;
+    const ref = doc(proposalsCol, id);
+    try {
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists()) throw new Error('Forslag finnes ikke');
+        const p = snap.data();
+        if (p.status !== 'pending') throw new Error('Forslaget er allerede ferdig');
+        if (p.initiatorId === myId) throw new Error('Du kan ikke stemme på eget forslag');
+        const yes = Array.isArray(p.yesVoters) ? p.yesVoters.slice() : [];
+        const no = Array.isArray(p.noVoters) ? p.noVoters.slice() : [];
+        if (yes.includes(myId) || no.includes(myId)) throw new Error('Du har allerede stemt');
+        if (vote === 'yes') yes.push(myId); else no.push(myId);
+        const threshold = Number(p.threshold) || PROPOSAL_THRESHOLD;
+        const update = { yesVoters: yes, noVoters: no };
+        if (yes.length >= threshold) {
+          const rulesRef = doc(playersCol, RULES_DOC_ID);
+          const rulesSnap = await tx.get(rulesRef);
+          const curRules = rulesSnap.exists() && Array.isArray(rulesSnap.data().rules)
+            ? rulesSnap.data().rules : [];
+          const newRule = { id: p.ruleId, emoji: p.emoji || '•', name: p.name, pts: Number(p.pts) || 0 };
+          if (p.note) newRule.note = p.note;
+          const merged = curRules.concat([newRule]);
+          tx.set(rulesRef, { rules: merged, version: RULES_VERSION, updatedAt: serverTimestamp() }, { merge: true });
+          update.status = 'applied';
+          update.resolvedAt = serverTimestamp();
+        } else {
+          const totalPlayers = totalPlayerCount();
+          const remaining = Math.max(0, totalPlayers - 1 - yes.length - no.length);
+          if (yes.length + remaining < threshold) {
+            update.status = 'rejected';
+            update.resolvedAt = serverTimestamp();
+          }
+        }
+        tx.update(ref, update);
+      });
+      toast(vote === 'yes' ? 'Stemte ja' : 'Stemte nei');
+    } catch (e) {
+      toast(e.message || 'Klarte ikke stemme');
+    }
+  }
+
+  async function cancelProposal(id) {
+    if (!db || !proposalsCol) return;
+    if (!confirm('Trekke tilbake forslaget?')) return;
+    await deleteDoc(doc(proposalsCol, id));
+    toast('Forslag trukket tilbake');
+  }
+
+  function notifyNewProposal(p) {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try {
+        const n = new Notification(`${p.initiatorName} foreslår ny regel`, {
+          body: `${p.emoji || '•'} "${p.name}" (${fmt(p.pts)}p) — stem ja/nei`,
+          icon: 'icon-192.png',
+          tag: `proposal-${p.id}`,
+        });
+        n.onclick = () => { window.focus(); n.close(); };
+      } catch (e) {}
+    }
+    playBeep();
+    if (navigator.vibrate) { try { navigator.vibrate([200, 100, 200]); } catch (e) {} }
+    toast(`Nytt forslag fra ${p.initiatorName}: ${p.name}`);
   }
 
   function notifyNewDownvote(d) {
@@ -1555,7 +1744,8 @@
     $('appFooter').style.display = showWhenLoggedIn;
     $('rulesHeader').style.display = showWhenLoggedIn;
     $('rulesList').style.display = showWhenLoggedIn;
-    $('editRulesBtn').style.display = (loggedIn && isAdmin()) ? '' : 'none';
+    $('editRulesBtn').style.display = loggedIn ? '' : 'none';
+    $('editRulesBtn').title = isAdmin() ? 'Endre regler' : 'Foreslå ny regel';
     updateInstallBanner(loggedIn);
 
     const card = $('totalCard');
@@ -1762,6 +1952,13 @@
   $('inboxBtn').addEventListener('click', openInbox);
   $('inboxClose').addEventListener('click', () => $('inboxBg').classList.remove('show'));
   $('inboxBody').addEventListener('click', e => {
+    const propBtn = e.target.closest('button[data-prop]');
+    if (propBtn) {
+      const id = propBtn.dataset.prop;
+      if (propBtn.classList.contains('vote-yes')) voteProposal(id, 'yes');
+      else if (propBtn.classList.contains('vote-no')) voteProposal(id, 'no');
+      return;
+    }
     const dvBtn = e.target.closest('button[data-dv]');
     if (dvBtn) {
       const id = dvBtn.dataset.dv;
@@ -1777,6 +1974,8 @@
   });
 
   $('myPendingList').addEventListener('click', e => {
+    const propBtn = e.target.closest('button[data-prop]');
+    if (propBtn) { cancelProposal(propBtn.dataset.prop); return; }
     const dvBtn = e.target.closest('button[data-dv]');
     if (dvBtn) { cancelDownvote(dvBtn.dataset.dv); return; }
     const btn = e.target.closest('button[data-id]');
@@ -1888,30 +2087,59 @@
   // ====== Admin: edit rules list ======
   function renderAdmin() {
     const body = $('adminRulesBody');
+    const admin = isAdmin();
+    const pending = proposals.filter(p => p.status === 'pending');
+    let pendingHtml = '';
+    if (pending.length > 0) {
+      pendingHtml = '<div style="font-size:12px;color:var(--gul);margin:0 0 8px;font-weight:700;">Forslag som venter (' + pending.length + ')</div>' +
+        pending.map(p => {
+          const threshold = proposalThresholdFor(p);
+          const yes = (p.yesVoters || []).length;
+          const adminDel = admin ? `<div class="acts"><button class="del" data-act="prop-del" data-pid="${p.id}">✕</button></div>` : '';
+          return `<div class="admin-rule" style="border-color:#3a3a18;background:#1a1a10;">
+            <div class="em">${p.emoji || '•'}</div>
+            <div class="info">
+              <div class="nm">${escapeHtml(p.name)} <span style="color:#888;font-size:12px;">(forslag fra ${escapeHtml(p.initiatorName)})</span></div>
+              <div class="pts">${fmt(p.pts)} p${p.note ? ' · ' + escapeHtml(p.note) : ''} · <span style="color:var(--gul);">${yes}/${threshold} ja</span></div>
+            </div>
+            ${adminDel}
+          </div>`;
+        }).join('') +
+        '<div style="height:8px;"></div>';
+    }
     if (rules.length === 0) {
-      body.innerHTML = '<div style="text-align:center;color:#888;padding:14px;">Ingen regler. Trykk "+ Ny regel".</div>';
+      body.innerHTML = pendingHtml + '<div style="text-align:center;color:#888;padding:14px;">Ingen regler. Trykk "+ Ny regel".</div>';
       return;
     }
-    body.innerHTML = rules.map((r, i) => {
+    body.innerHTML = pendingHtml + rules.map((r, i) => {
       const sign = r.pts < 0 ? '' : '+';
+      const actsHtml = admin ? `
+        <div class="acts">
+          <button data-act="up" data-i="${i}" ${i===0?'disabled':''}>↑</button>
+          <button data-act="down" data-i="${i}" ${i===rules.length-1?'disabled':''}>↓</button>
+          <button data-act="edit" data-i="${i}">✏️</button>
+          <button class="del" data-act="del" data-i="${i}">✕</button>
+        </div>` : '';
       return `<div class="admin-rule ${r.pts<0?'neg':''}">
         <div class="em">${r.emoji || '•'}</div>
         <div class="info">
           <div class="nm">${escapeHtml(r.name)}</div>
           <div class="pts">${sign}${fmt(r.pts)} p${r.note?' · '+escapeHtml(r.note):''}</div>
         </div>
-        <div class="acts">
-          <button data-act="up" data-i="${i}" ${i===0?'disabled':''}>↑</button>
-          <button data-act="down" data-i="${i}" ${i===rules.length-1?'disabled':''}>↓</button>
-          <button data-act="edit" data-i="${i}">✏️</button>
-          <button class="del" data-act="del" data-i="${i}">✕</button>
-        </div>
+        ${actsHtml}
       </div>`;
     }).join('');
   }
 
   function openAdmin() {
     if (!db) { toast('Firebase ikke koblet til'); return; }
+    if (!myId) { promptLogin(); return; }
+    const admin = isAdmin();
+    $('adminTitle').textContent = admin ? 'Endre regler' : 'Regler';
+    $('adminSub').textContent = admin
+      ? 'Endringer synker live til alle.'
+      : `Foreslå en ny regel — ${PROPOSAL_THRESHOLD} må stemme ja for at den legges til.`;
+    $('adminAdd').textContent = admin ? '+ Ny regel' : '+ Foreslå regel';
     renderAdmin();
     $('adminModalBg').classList.add('show');
   }
@@ -1919,6 +2147,18 @@
   function closeAdmin() { $('adminModalBg').classList.remove('show'); }
 
   function openEditRule(idx) {
+    if (idx < 0 && !isAdmin()) {
+      editingIdx = -1;
+      $('editRuleTitle').textContent = 'Foreslå ny regel';
+      $('erEmoji').value = '';
+      $('erName').value = '';
+      $('erPts').value = '';
+      $('erNote').value = '';
+      $('erSave').textContent = 'Send forslag';
+      $('editRuleBg').classList.add('show');
+      setTimeout(() => $('erName').focus(), 50);
+      return;
+    }
     editingIdx = idx;
     const r = idx >= 0 ? rules[idx] : { emoji: '', name: '', pts: '', note: '' };
     $('editRuleTitle').textContent = idx >= 0 ? 'Endre regel' : 'Ny regel';
@@ -1926,6 +2166,7 @@
     $('erName').value = r.name || '';
     $('erPts').value = r.pts === '' ? '' : String(r.pts).replace('.', ',');
     $('erNote').value = r.note || '';
+    $('erSave').textContent = 'Lagre';
     $('editRuleBg').classList.add('show');
     setTimeout(() => $('erName').focus(), 50);
   }
@@ -1940,6 +2181,12 @@
     if (!ptsRaw || Number.isNaN(pts)) { toast('Ugyldig poengverdi'); return; }
     const emoji = $('erEmoji').value.trim() || '•';
     const note = $('erNote').value.trim();
+    if (!isAdmin()) {
+      await createProposal({ emoji, name, pts, note });
+      closeEditRule();
+      renderAdmin();
+      return;
+    }
     const next = rules.slice();
     if (editingIdx >= 0) {
       next[editingIdx] = { ...next[editingIdx], emoji, name, pts, note: note || undefined };
@@ -1979,8 +2226,15 @@
   $('adminRulesBody').addEventListener('click', e => {
     const btn = e.target.closest('button[data-act]');
     if (!btn) return;
-    const i = parseInt(btn.dataset.i, 10);
     const act = btn.dataset.act;
+    if (act === 'prop-del') {
+      if (!isAdmin()) return;
+      const pid = btn.dataset.pid;
+      if (!confirm('Slette dette forslaget?')) return;
+      deleteDoc(doc(proposalsCol, pid));
+      return;
+    }
+    const i = parseInt(btn.dataset.i, 10);
     if (act === 'up') moveRule(i, -1);
     else if (act === 'down') moveRule(i, 1);
     else if (act === 'edit') openEditRule(i);
