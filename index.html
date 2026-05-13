@@ -711,6 +711,7 @@
   const tg = window.Telegram?.WebApp;
   if (tg) { try { tg.ready(); tg.expand(); } catch (e) {} }
   const myTelegramChatId = tg?.initDataUnsafe?.user?.id ?? null;
+  const myTelegramFirstName = tg?.initDataUnsafe?.user?.first_name ?? null;
   const APP_URL = location.origin + location.pathname;
   let didSyncTelegramId = false;
   // ==========================================
@@ -1856,10 +1857,13 @@
   });
 
   $('newPlayerBtn').addEventListener('click', () => {
-    $('nameInput').value = '';
+    $('nameInput').value = myTelegramFirstName || '';
     $('pinInput').value = '';
     $('modalBg').classList.add('show');
-    setTimeout(() => $('nameInput').focus(), 50);
+    setTimeout(() => {
+      if (myTelegramFirstName) $('pinInput').focus();
+      else $('nameInput').focus();
+    }, 50);
   });
 
   $('modalCancel').addEventListener('click', () => $('modalBg').classList.remove('show'));
