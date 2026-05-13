@@ -389,6 +389,42 @@
   }
   .notif-banner:active { opacity: 0.8; }
 
+  .welcome-card {
+    background: linear-gradient(160deg, #1d2647, #0f1428);
+    border: 1px solid #2a3550;
+    border-radius: 18px;
+    padding: 22px 18px 18px;
+    margin-bottom: 14px;
+    text-align: center;
+  }
+  .welcome-emoji { font-size: 38px; line-height: 1; margin-bottom: 6px; }
+  .welcome-h { font-family: 'Bebas Neue'; letter-spacing: 1.5px; font-size: 30px; margin: 6px 0 8px; color: var(--tekst); }
+  .welcome-p { color: #c8d0e0; font-size: 14.5px; margin: 0 0 14px; line-height: 1.5; }
+  .btn-xl { font-size: 20px; padding: 18px 18px; width: 100%; }
+
+  .install-banner {
+    width: 100%;
+    background: #1a2238;
+    color: #e6ecff;
+    border: 1px solid #2a3550;
+    border-radius: 12px;
+    padding: 10px 12px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 12px;
+    text-align: left;
+    line-height: 1.45;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .install-banner strong { color: var(--tekst); }
+  .install-banner .ib-x {
+    background: none; border: none; color: var(--muted); font-size: 18px;
+    cursor: pointer; padding: 0 4px; margin-left: auto; align-self: flex-start;
+  }
+
   .me-chip {
     flex: 1;
     background: var(--card);
@@ -496,8 +532,14 @@
     Åpne <code>index.html</code> og lim inn din Firebase-config. Se <code>README.md</code>.
   </div>
 
+  <div class="welcome-card" id="welcomeCard" style="display:none;">
+    <div class="welcome-emoji">🇳🇴🍻</div>
+    <h2 class="welcome-h">Hei, gutten</h2>
+    <p class="welcome-p">Bli med på poenglista! Tar 10 sekunder. Trykk under, skriv navnet ditt og velg en 4-sifret kode du husker. Det er alt.</p>
+  </div>
+
   <div class="player-bar" id="loginBar">
-    <button class="btn" id="newPlayerBtn" style="flex:1;">Bli med</button>
+    <button class="btn btn-xl" id="newPlayerBtn" style="flex:1;">Bli med</button>
   </div>
 
   <div class="player-bar" id="meBar" style="display:none;">
@@ -508,6 +550,12 @@
     <button class="icon-btn" id="adminBtn" title="Admin" style="display:none;">⚙️</button>
   </div>
 
+  <div id="iosInstallBanner" class="install-banner" style="display:none;">
+    <span>📱</span>
+    <span><strong>Tips:</strong> Trykk Del-knappen <span style="display:inline-block;border:1px solid #2a3550;border-radius:4px;padding:0 4px;font-size:12px;">⬆️</span> nederst og velg <strong>«Legg til på Hjem-skjerm»</strong>. Da forblir du logga inn — og slipper å skrive koden på nytt.</span>
+    <button class="ib-x" id="iosInstallClose" aria-label="Lukk">×</button>
+  </div>
+
   <button id="notifEnableBtn" class="notif-banner" style="display:none;">🔔 Skru på varsler — så får du beskjed når noen ber om verifisering</button>
 
   <div class="total-card" id="totalCard">
@@ -516,9 +564,9 @@
     <div id="elimTag"></div>
   </div>
 
-  <div class="section-row">
+  <div class="section-row" id="rulesHeader">
     <h2>Regler</h2>
-    <button class="icon-btn" id="editRulesBtn" title="Endre regler">✏️</button>
+    <button class="icon-btn" id="editRulesBtn" title="Endre regler" style="display:none;">✏️</button>
   </div>
   <div id="rulesList"></div>
 
@@ -533,10 +581,10 @@
 
   <button class="elim-btn" id="elimBtn">Catche klamma / aids / skabb / herpes</button>
 
-  <h2 class="section-title">Leaderboard</h2>
+  <h2 class="section-title" id="leaderboardHeading">Leaderboard</h2>
   <div class="leaderboard" id="leaderboard"></div>
 
-  <div class="footer">
+  <div class="footer" id="appFooter">
     <button class="reset-btn" id="resetBtn">Nullstill mine poeng</button>
     <div style="margin-top: 12px;">Lykke til, gutta. Ikke bli arrestert.</div>
   </div>
@@ -545,12 +593,12 @@
 <div class="modal-bg" id="modalBg">
   <div class="modal">
     <h3>Bli med</h3>
-    <p>Velg navn og en 4-sifret PIN. Husk PIN-en — du trenger den for å logge inn igjen.</p>
+    <p>Skriv navnet ditt og velg en 4-sifret kode du husker. Koden gjør at ingen andre kan jukse i ditt navn.</p>
     <input id="nameInput" class="name-input" placeholder="Navn" maxlength="20" autocomplete="off">
-    <input id="pinInput" class="name-input" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="4-sifret PIN" maxlength="4" autocomplete="off" style="margin-top:8px; letter-spacing: 4px; text-align: center;">
+    <input id="pinInput" class="name-input" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="Velg 4-sifret kode" maxlength="4" autocomplete="off" style="margin-top:8px; letter-spacing: 4px; text-align: center;">
     <div class="row">
       <button class="btn btn-ghost" id="modalCancel" style="flex:1">Avbryt</button>
-      <button class="btn" id="modalOk" style="flex:1">Kjør</button>
+      <button class="btn" id="modalOk" style="flex:1">Logg meg på</button>
     </div>
   </div>
 </div>
@@ -711,7 +759,33 @@
   let rules = DEFAULT_RULES.slice();
   let verifs = [];
   let downvotes = [];
-  let myId = localStorage.getItem('myId') || null;
+  function getCookie(name) {
+    const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+  function setCookie(name, val, days) {
+    const maxAge = days * 24 * 60 * 60;
+    document.cookie = name + '=' + encodeURIComponent(val) + '; max-age=' + maxAge + '; path=/; SameSite=Lax';
+  }
+  function delCookie(name) {
+    document.cookie = name + '=; max-age=0; path=/; SameSite=Lax';
+  }
+  function saveMyId(id) {
+    try { localStorage.setItem('myId', id); } catch (e) {}
+    setCookie('myId', id, 180);
+  }
+  function clearMyId() {
+    try { localStorage.removeItem('myId'); } catch (e) {}
+    delCookie('myId');
+  }
+  let myId = (function() {
+    try { return localStorage.getItem('myId') || getCookie('myId') || null; }
+    catch (e) { return getCookie('myId') || null; }
+  })();
+  if (myId) {
+    try { localStorage.setItem('myId', myId); } catch (e) {}
+    setCookie('myId', myId, 180);
+  }
   const CACHED_ME_KEY = 'cachedMe';
   function cacheMe(p) {
     if (!p) return;
@@ -794,7 +868,7 @@
       snap.docChanges().forEach(change => {
         if (change.type === 'removed' && change.doc.id === myId) {
           myId = null;
-          localStorage.removeItem('myId');
+          clearMyId();
           toast('Spilleren din ble slettet');
         }
       });
@@ -1429,25 +1503,59 @@
   }
   function logout() {
     if (!confirm('Logg av? Da må du lage ny spiller.')) return;
-    localStorage.removeItem('myId');
+    clearMyId();
     myId = null;
     $('adminPlayersBg').classList.remove('show');
     render();
     toast('Logget av');
   }
 
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+  const isTelegram = !!(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData);
+  function updateInstallBanner(loggedIn) {
+    const b = $('iosInstallBanner');
+    if (!b) return;
+    const dismissed = localStorage.getItem('iosInstallDismissed') === '1';
+    if (loggedIn && isIOS && !isStandalone && !isTelegram && !dismissed) {
+      b.style.display = '';
+    } else {
+      b.style.display = 'none';
+    }
+  }
+  const iosClose = $('iosInstallClose');
+  if (iosClose) iosClose.addEventListener('click', () => {
+    try { localStorage.setItem('iosInstallDismissed', '1'); } catch(e) {}
+    $('iosInstallBanner').style.display = 'none';
+  });
+
   function render() {
     const me = myId ? players[myId] : null;
+    const loggedIn = !!me;
 
     if (me) {
       $('loginBar').style.display = 'none';
       $('meBar').style.display = '';
+      $('welcomeCard').style.display = 'none';
       $('meName').textContent = me.name;
       $('adminBtn').style.display = isAdmin() ? '' : 'none';
     } else {
       $('loginBar').style.display = '';
       $('meBar').style.display = 'none';
+      $('welcomeCard').style.display = '';
     }
+
+    const showWhenLoggedIn = loggedIn ? '' : 'none';
+    $('totalCard').style.display = showWhenLoggedIn;
+    $('anmeldBtn').style.display = showWhenLoggedIn;
+    $('elimBtn').style.display = showWhenLoggedIn;
+    $('leaderboardHeading').style.display = showWhenLoggedIn;
+    $('leaderboard').style.display = showWhenLoggedIn;
+    $('appFooter').style.display = showWhenLoggedIn;
+    $('rulesHeader').style.display = showWhenLoggedIn;
+    $('rulesList').style.display = showWhenLoggedIn;
+    $('editRulesBtn').style.display = (loggedIn && isAdmin()) ? '' : 'none';
+    updateInstallBanner(loggedIn);
 
     const card = $('totalCard');
     if (me) {
@@ -1572,9 +1680,9 @@
 
     if (existing) {
       if (existing.pinHash) {
-        if (existing.pinHash !== pinHash) { toast('Feil PIN for ' + existing.name, true); return; }
+        if (existing.pinHash !== pinHash) { toast('Feil kode for ' + existing.name, true); return; }
         myId = existing.id;
-        localStorage.setItem('myId', existing.id);
+        saveMyId(existing.id);
         render();
         toast(`Velkommen tilbake, ${existing.name}`);
         if (myTelegramChatId && existing.telegramChatId !== myTelegramChatId) {
@@ -1583,9 +1691,9 @@
       } else {
         players[existing.id] = { ...existing, pinHash };
         myId = existing.id;
-        localStorage.setItem('myId', existing.id);
+        saveMyId(existing.id);
         render();
-        toast(`Innlogget som ${existing.name} — PIN satt`);
+        toast(`Innlogget som ${existing.name} — kode satt`);
         const updates = { pinHash, updatedAt: serverTimestamp() };
         if (myTelegramChatId) updates.telegramChatId = myTelegramChatId;
         setDoc(doc(playersCol, existing.id), updates, { merge: true }).catch(e => {
@@ -1609,7 +1717,7 @@
     if (myTelegramChatId) data.telegramChatId = myTelegramChatId;
     players[id] = { id, name: trimmed, pinHash, scores: {}, eliminated: false };
     myId = id;
-    localStorage.setItem('myId', id);
+    saveMyId(id);
     render();
     toast(`Velkommen, ${trimmed}`);
     setDoc(doc(playersCol, id), data).catch(e => {
@@ -1617,7 +1725,7 @@
       delete players[id];
       if (myId === id) {
         myId = null;
-        localStorage.removeItem('myId');
+        clearMyId();
       }
       render();
       toast('Klarte ikke logge inn: ' + (e?.code || e?.message || 'ukjent feil'), true);
